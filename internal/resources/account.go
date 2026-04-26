@@ -200,9 +200,12 @@ func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest
 		plan.Organization = types.StringValue(created.Organization)
 		if created.ParentAccount != "" {
 			plan.Parent = types.StringValue(created.ParentAccount)
-		} else {
+		} else if plan.Parent.IsUnknown() {
+			// Not set by user and API returned empty — resolve the unknown to null.
 			plan.Parent = types.StringNull()
 		}
+		// If user set parent_account but API returned empty, keep the planned
+		// value — Slurm accepted the parent but may not echo it back immediately.
 	}
 
 	diags = resp.State.Set(ctx, plan)
