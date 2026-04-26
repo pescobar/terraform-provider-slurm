@@ -18,20 +18,20 @@ variable "slurm_token" {
   sensitive = true
 }
 
-resource "slurm_qos" "normal" {
-  name        = "normal"
-  description = "Normal priority QOS"
+resource "slurm_qos" "standard" {
+  name        = "standard"
+  description = "Standard priority QOS"
   priority    = 100
   max_wall_pj = 1440
 }
 
-resource "slurm_qos" "high" {
-  name        = "high"
+resource "slurm_qos" "priority" {
+  name        = "priority"
   description = "High priority QOS"
   priority    = 200
   max_wall_pj = 2880
 
-  preempt_list = [slurm_qos.normal.name]
+  preempt_list = [slurm_qos.standard.name]
   preempt_mode = ["CANCEL"]
 }
 
@@ -40,8 +40,8 @@ resource "slurm_account" "physics" {
   description    = "Physics department"
   organization   = "university"
   fairshare      = 100
-  default_qos    = slurm_qos.normal.name
-  allowed_qos    = [slurm_qos.normal.name, slurm_qos.high.name]
+  default_qos    = slurm_qos.standard.name
+  allowed_qos    = [slurm_qos.standard.name, slurm_qos.priority.name]
 }
 
 resource "slurm_user" "bob" {
