@@ -15,7 +15,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        slurm_version: ["25.05"]
+        include:
+          - slurm_version: "25.05.4"
+            api_version: "v0.0.42"
 
     steps:
       - uses: actions/checkout@v6
@@ -35,29 +37,26 @@ jobs:
           provider_acceptance_tests: true
 
       # -----------------------------------------------------------------------
-      # Start the Slurm Docker cluster
+      # Start the Slurm cluster from pre-built GHCR images (public, no auth needed)
       # -----------------------------------------------------------------------
-      - name: Clone Slurm Docker cluster
-        run: |
-          git clone https://github.com/giovtorres/slurm-docker-cluster.git \
-            /tmp/slurm-docker-cluster
-
       - name: Start Slurm cluster
-        working-directory: /tmp/slurm-docker-cluster
+        working-directory: docker/
+        env:
+          SLURM_VERSION: ${{ matrix.slurm_version }}
         run: docker compose up -d
 
       - name: Wait for slurmctld to be ready
         run: |
           echo "Waiting for slurmctld..."
           for i in $(seq 1 36); do
-            if docker exec slurmctld sinfo &>/dev/null 2>&1; then
+            if docker exec slurmctld scontrol ping &>/dev/null 2>&1; then
               echo "slurmctld ready."
               break
             fi
             echo "  attempt $i/36 — sleeping 5s"
             sleep 5
           done
-          docker exec slurmctld sinfo
+          docker exec slurmctld scontrol ping
 
       - name: Wait for slurmrestd to be ready
         run: |
@@ -66,7 +65,7 @@ jobs:
           echo "Waiting for slurmrestd on port 6820..."
           for i in $(seq 1 24); do
             if curl -sf -H "X-SLURM-USER-TOKEN: $TOKEN" \
-                http://localhost:6820/slurmdb/v0.0.42/diag/ &>/dev/null; then
+                http://localhost:6820/slurmdb/${{ matrix.api_version }}/diag/ &>/dev/null; then
               echo "slurmrestd ready."
               break
             fi
@@ -87,7 +86,7 @@ jobs:
         env:
           SLURM_REST_URL: "http://localhost:6820"
           SLURM_CLUSTER: "linux"
-          SLURM_API_VERSION: "v0.0.42"
+          SLURM_API_VERSION: ${{ matrix.api_version }}
         run: go test ./... -v -count=1 -timeout 30m -run TestAcc
 
       - name: Collect Docker logs on failure
