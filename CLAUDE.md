@@ -104,6 +104,12 @@ provider "slurm" {
 - **Cause**: API returns `{"number": 1440, "set": true, "infinite": false}` but struct had `Job int`
 - **Fix**: Changed `QOSWallClockPer.Job` from `int` to `*SlurmInt`
 
+### Bug 3: "Slurmdbd query returned with empty list" on second apply
+- **Symptom**: `slurm API error (HTTP 200): Slurmdbd query returned with empty list` on the second `tofu apply` after a destroy cycle
+- **Cause**: The test config used `name = "normal"` which is Slurm's built-in system QOS (auto-created at DB init). On destroy the provider deletes it (soft-delete: `deleted=1`). On the next apply, slurmdbd does an UPDATE to restore the soft-deleted row; slurmrestd's internal verification query then fails to find the row because it uses conditions that don't match a restored system QOS.
+- **Fix**: Never manage Slurm's built-in QOS names (`normal`, etc.) as provider resources. Rename all test/example QOS to non-system names (`standard`, `priority`, etc.).
+- **Note**: `SlurmInt.Infinite` uses `omitempty` to avoid sending `"infinite":false` explicitly, which is a separate but related concern.
+
 ## Key Implementation Notes
 
 ### Association Diff Logic (`user_association_diff.go`)
@@ -146,13 +152,10 @@ terraform-provider-slurm/
 
 ## Current Status
 - All four resources implemented (cluster, account, qos, user with embedded associations).
-- Two bugs found during first integration test and fixed.
-- Ready for testing after rebuild (`make install`).
-- Need to clean up partially-created state before retesting.
+- Three bugs found and fixed (see above).
+- Integration tested: apply/destroy/apply cycle works reliably with non-system QOS names.
 
 ## What's Left
-- Integration testing against Docker environment
-- More Slurm API response fields may need type fixes (similar to the SlurmInt issue)
 - Import support needs testing
 - Acceptance tests
 - CI with GitHub Actions
