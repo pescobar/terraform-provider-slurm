@@ -18,6 +18,8 @@ jobs:
         include:
           - slurm_version: "25.05.4"
             api_version: "v0.0.42"
+          - slurm_version: "25.11.5"
+            api_version: "v0.0.44"
 
     steps:
       - uses: actions/checkout@v6
@@ -27,14 +29,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # Install the OpenTofu binary and configure terraform-plugin-testing to
-      # use it. provider_acceptance_tests: true automatically exports:
-      #   TF_ACC=1
-      #   TF_ACC_PROVIDER_HOST=registry.opentofu.org
-      #   TF_ACC_TERRAFORM_PATH=<path to tofu binary>
       - uses: opentofu/setup-opentofu@v1
-        with:
-          provider_acceptance_tests: true
 
       # -----------------------------------------------------------------------
       # Start the Slurm cluster from pre-built GHCR images (public, no auth needed)
@@ -73,6 +68,17 @@ jobs:
             sleep 5
           done
 
+      - name: Print Slurm version
+        run: |
+          docker exec slurmctld slurmctld -V
+          docker exec slurmrestd slurmrestd -V
+
+      - name: Print available REST API versions
+        run: |
+          TOKEN=$(docker exec slurmctld scontrol token lifespan=600 | sed 's/SLURM_JWT=//')
+          curl -s -H "X-SLURM-USER-TOKEN: $TOKEN" http://localhost:6820/openapi/v3 \
+            | jq '.paths | keys | map(select(startswith("/slurm") or startswith("/slurmdb"))) | map(split("/")[2]) | unique'
+
       - name: Generate JWT token
         run: |
           TOKEN=$(docker exec slurmctld scontrol token lifespan=3600 \
@@ -80,14 +86,31 @@ jobs:
           echo "SLURM_JWT_TOKEN=$TOKEN" >> "$GITHUB_ENV"
 
       # -----------------------------------------------------------------------
-      # Run acceptance tests against the OpenTofu binary
+      # Build the provider and run acceptance tests via tofu apply/destroy
       # -----------------------------------------------------------------------
+      - name: Build provider binary
+        run: go build -o /tmp/terraform-provider-slurm .
+
+      - name: Configure dev_overrides
+        run: |
+          cat > /tmp/dev.tofurc <<EOF
+          provider_installation {
+            dev_overrides {
+              "pescobar/slurm" = "/tmp"
+            }
+            direct {}
+          }
+          EOF
+
       - name: Run acceptance tests
         env:
-          SLURM_REST_URL: "http://localhost:6820"
-          SLURM_CLUSTER: "linux"
-          SLURM_API_VERSION: ${{ matrix.api_version }}
-        run: go test ./... -v -count=1 -timeout 30m -run TestAcc
+          TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
+          TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
+          TF_VAR_slurm_api_version: ${{ matrix.api_version }}
+        run: |
+          cd examples/
+          tofu apply -auto-approve
+          tofu destroy -auto-approve
 
       - name: Collect Docker logs on failure
         if: failure()
