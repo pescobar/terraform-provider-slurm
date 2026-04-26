@@ -127,45 +127,30 @@ func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest
 		"name": plan.Name.ValueString(),
 	})
 
-	// Step 1: Create the account
-	account := client.Account{
-		Name: plan.Name.ValueString(),
-	}
+	// Build the accounts_association request which atomically creates the account
+	// metadata AND its cluster-level association with limits in one API call.
+	acctShort := client.AccountShort{}
 	if !plan.Description.IsNull() && !plan.Description.IsUnknown() {
-		account.Description = plan.Description.ValueString()
+		acctShort.Description = plan.Description.ValueString()
 	}
 	if !plan.Organization.IsNull() && !plan.Organization.IsUnknown() {
-		account.Organization = plan.Organization.ValueString()
+		acctShort.Organization = plan.Organization.ValueString()
 	}
 	if !plan.Parent.IsNull() && !plan.Parent.IsUnknown() {
-		account.ParentAccount = plan.Parent.ValueString()
+		acctShort.Parent = plan.Parent.ValueString()
 	}
 
-	if err := r.client.CreateAccount(account); err != nil {
-		resp.Diagnostics.AddError("Error creating account", err.Error())
-		return
-	}
-
-	// Step 2: Create the account-level association with limits
-	assoc := client.Association{
-		Account: plan.Name.ValueString(),
-		Cluster: r.client.Cluster,
-	}
-
-	hasAssocAttrs := false
+	assocSet := &client.AssocRecSet{}
+	hasLimits := false
 
 	if !plan.Fairshare.IsNull() && !plan.Fairshare.IsUnknown() {
-		assoc.Fairshare = &client.SlurmInt{
-			Number: int(plan.Fairshare.ValueInt64()),
-			Set:    true,
-		}
-		hasAssocAttrs = true
+		v := int(plan.Fairshare.ValueInt64())
+		assocSet.Fairshare = &v
+		hasLimits = true
 	}
 	if !plan.DefaultQOS.IsNull() && !plan.DefaultQOS.IsUnknown() {
-		assoc.Default = &client.AssociationDefaults{
-			QOS: plan.DefaultQOS.ValueString(),
-		}
-		hasAssocAttrs = true
+		assocSet.DefaultQOS = plan.DefaultQOS.ValueString()
+		hasLimits = true
 	}
 	if !plan.AllowedQOS.IsNull() && !plan.AllowedQOS.IsUnknown() {
 		var qosList []string
@@ -174,28 +159,31 @@ func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		assoc.QOS = qosList
-		hasAssocAttrs = true
+		assocSet.QOSLevel = qosList
+		hasLimits = true
 	}
 	if !plan.MaxJobs.IsNull() && !plan.MaxJobs.IsUnknown() {
-		assoc.Max = &client.AssociationMax{
-			Jobs: &client.AssociationMaxJobs{
-				Per: &client.AssociationMaxJobsPer{
-					Count: &client.SlurmInt{
-						Number: int(plan.MaxJobs.ValueInt64()),
-						Set:    true,
-					},
-				},
-			},
+		assocSet.MaxJobs = &client.SlurmInt{
+			Number: int(plan.MaxJobs.ValueInt64()),
+			Set:    true,
 		}
-		hasAssocAttrs = true
+		hasLimits = true
 	}
 
-	if hasAssocAttrs {
-		if err := r.client.CreateAssociations([]client.Association{assoc}); err != nil {
-			resp.Diagnostics.AddError("Error creating account association", err.Error())
-			return
-		}
+	acctAssocReq := client.AccountAssociationRequest{
+		AssociationCondition: client.AccountAssociationCondition{
+			Accounts: []string{plan.Name.ValueString()},
+			Clusters: []string{r.client.Cluster},
+		},
+		Account: acctShort,
+	}
+	if hasLimits {
+		acctAssocReq.AssociationCondition.Association = assocSet
+	}
+
+	if err := r.client.CreateAccountWithAssociation(acctAssocReq); err != nil {
+		resp.Diagnostics.AddError("Error creating account", err.Error())
+		return
 	}
 
 	plan.ID = plan.Name
@@ -257,8 +245,8 @@ func (r *accountResource) Read(ctx context.Context, req resource.ReadRequest, re
 			"error":   err.Error(),
 		})
 	} else if assoc != nil {
-		if assoc.Fairshare != nil && assoc.Fairshare.Set {
-			state.Fairshare = types.Int64Value(int64(assoc.Fairshare.Number))
+		if assoc.SharesRaw != nil {
+			state.Fairshare = types.Int64Value(int64(*assoc.SharesRaw))
 		}
 		if assoc.Default != nil && assoc.Default.QOS != "" {
 			state.DefaultQOS = types.StringValue(assoc.Default.QOS)
@@ -309,21 +297,14 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	// Update account-level association
-	assoc := client.Association{
-		Account: plan.Name.ValueString(),
-		Cluster: r.client.Cluster,
-	}
+	// Update account-level association limits via accounts_association (upsert).
+	assocSet := &client.AssocRecSet{}
 	if !plan.Fairshare.IsNull() {
-		assoc.Fairshare = &client.SlurmInt{
-			Number: int(plan.Fairshare.ValueInt64()),
-			Set:    true,
-		}
+		v := int(plan.Fairshare.ValueInt64())
+		assocSet.Fairshare = &v
 	}
 	if !plan.DefaultQOS.IsNull() {
-		assoc.Default = &client.AssociationDefaults{
-			QOS: plan.DefaultQOS.ValueString(),
-		}
+		assocSet.DefaultQOS = plan.DefaultQOS.ValueString()
 	}
 	if !plan.AllowedQOS.IsNull() {
 		var qosList []string
@@ -332,22 +313,24 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		assoc.QOS = qosList
+		assocSet.QOSLevel = qosList
 	}
 	if !plan.MaxJobs.IsNull() {
-		assoc.Max = &client.AssociationMax{
-			Jobs: &client.AssociationMaxJobs{
-				Per: &client.AssociationMaxJobsPer{
-					Count: &client.SlurmInt{
-						Number: int(plan.MaxJobs.ValueInt64()),
-						Set:    true,
-					},
-				},
-			},
+		assocSet.MaxJobs = &client.SlurmInt{
+			Number: int(plan.MaxJobs.ValueInt64()),
+			Set:    true,
 		}
 	}
 
-	if err := r.client.CreateAssociations([]client.Association{assoc}); err != nil {
+	updateReq := client.AccountAssociationRequest{
+		AssociationCondition: client.AccountAssociationCondition{
+			Accounts:    []string{plan.Name.ValueString()},
+			Clusters:    []string{r.client.Cluster},
+			Association: assocSet,
+		},
+		Account: client.AccountShort{},
+	}
+	if err := r.client.CreateAccountWithAssociation(updateReq); err != nil {
 		resp.Diagnostics.AddError("Error updating account association", err.Error())
 		return
 	}

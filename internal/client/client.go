@@ -281,6 +281,44 @@ func (c *Client) DeleteAccount(name string) error {
 	return err
 }
 
+// AccountAssociationRequest is the body for POST /slurmdb/{version}/accounts_association/
+// This endpoint atomically creates an account and its cluster-level association.
+type AccountAssociationRequest struct {
+	AssociationCondition AccountAssociationCondition `json:"association_condition"`
+	Account              AccountShort               `json:"account"`
+}
+
+// AccountAssociationCondition specifies which account+cluster combinations to create.
+type AccountAssociationCondition struct {
+	Accounts    []string     `json:"accounts"`
+	Clusters    []string     `json:"clusters,omitempty"`
+	Association *AssocRecSet `json:"association,omitempty"`
+}
+
+// AccountShort is the minimal account object accepted by accounts_association.
+type AccountShort struct {
+	Description  string `json:"description,omitempty"`
+	Organization string `json:"organization,omitempty"`
+	Parent       string `json:"parent,omitempty"`
+}
+
+// AssocRecSet holds the writable association limit fields accepted by
+// accounts_association and users_association. Field names differ from the
+// Association struct because the _association endpoints use a separate schema.
+type AssocRecSet struct {
+	Fairshare  *int      `json:"fairshare,omitempty"`
+	DefaultQOS string    `json:"defaultqos,omitempty"`
+	QOSLevel   []string  `json:"qoslevel,omitempty"`
+	MaxJobs    *SlurmInt `json:"maxjobs,omitempty"`
+}
+
+// CreateAccountWithAssociation creates an account and its cluster-level
+// association atomically via POST /accounts_association/.
+func (c *Client) CreateAccountWithAssociation(req AccountAssociationRequest) error {
+	_, err := c.doRequest(http.MethodPost, c.slurmdbPath("accounts_association/"), req)
+	return err
+}
+
 // ---------------------------------------------------------------------
 // QOS endpoints
 // ---------------------------------------------------------------------
@@ -490,15 +528,18 @@ type AssociationResponse struct {
 
 // Association represents a Slurm association (the link between user, account,
 // cluster, and partition with attached limits).
+// Field names match the v0.0.42 API schema for POST /associations/:
+//   - shares_raw (plain int) is the fairshare value, not a SlurmInt object
+//   - default.qos for default QOS, qos[] for allowed QOS list
 type Association struct {
-	Account   string             `json:"account,omitempty"`
-	Cluster   string             `json:"cluster,omitempty"`
-	Partition string             `json:"partition,omitempty"`
-	User      string             `json:"user"`
+	Account   string               `json:"account,omitempty"`
+	Cluster   string               `json:"cluster,omitempty"`
+	Partition string               `json:"partition,omitempty"`
+	User      string               `json:"user"`
 	Default   *AssociationDefaults `json:"default,omitempty"`
-	Fairshare *SlurmInt          `json:"fairshare,omitempty"`
-	QOS       []string           `json:"qos,omitempty"`
-	Max       *AssociationMax    `json:"max,omitempty"`
+	SharesRaw *int                 `json:"shares_raw,omitempty"`
+	QOS       []string             `json:"qos,omitempty"`
+	Max       *AssociationMax      `json:"max,omitempty"`
 }
 
 // AssociationDefaults contains default settings for an association.
