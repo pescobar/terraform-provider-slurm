@@ -31,9 +31,10 @@ type accountResourceModel struct {
 	Organization types.String `tfsdk:"organization"`
 	Parent       types.String `tfsdk:"parent_account"`
 	// Account-level association attributes (direct on the account)
-	Fairshare  types.Int64    `tfsdk:"fairshare"`
-	DefaultQOS types.String   `tfsdk:"default_qos"`
-	AllowedQOS types.List     `tfsdk:"allowed_qos"`
+	Fairshare  types.Int64  `tfsdk:"fairshare"`
+	DefaultQOS types.String `tfsdk:"default_qos"`
+	AllowedQOS types.List   `tfsdk:"allowed_qos"`
+	MaxJobs    types.Int64  `tfsdk:"max_jobs"`
 }
 
 func NewAccountResource() resource.Resource {
@@ -90,6 +91,10 @@ func (r *accountResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description: "List of allowed QOS names for this account.",
 				Optional:    true,
 				ElementType: types.StringType,
+			},
+			"max_jobs": schema.Int64Attribute{
+				Description: "Maximum number of running jobs for this account's association (inherited by users unless overridden).",
+				Optional:    true,
 			},
 		},
 	}
@@ -172,6 +177,19 @@ func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest
 		assoc.QOS = qosList
 		hasAssocAttrs = true
 	}
+	if !plan.MaxJobs.IsNull() && !plan.MaxJobs.IsUnknown() {
+		assoc.Max = &client.AssociationMax{
+			Jobs: &client.AssociationMaxJobs{
+				Per: &client.AssociationMaxJobsPer{
+					Count: &client.SlurmInt{
+						Number: int(plan.MaxJobs.ValueInt64()),
+						Set:    true,
+					},
+				},
+			},
+		}
+		hasAssocAttrs = true
+	}
 
 	if hasAssocAttrs {
 		if err := r.client.CreateAssociations([]client.Association{assoc}); err != nil {
@@ -181,6 +199,23 @@ func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	plan.ID = plan.Name
+
+	// Read back from API to resolve computed fields (parent_account, description, organization)
+	// that are Optional+Computed and may still be unknown if not set in config.
+	created, err := r.client.GetAccount(plan.Name.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Error reading account after create", err.Error())
+		return
+	}
+	if created != nil {
+		plan.Description = types.StringValue(created.Description)
+		plan.Organization = types.StringValue(created.Organization)
+		if created.ParentAccount != "" {
+			plan.Parent = types.StringValue(created.ParentAccount)
+		} else {
+			plan.Parent = types.StringNull()
+		}
+	}
 
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -232,6 +267,10 @@ func (r *accountResource) Read(ctx context.Context, req resource.ReadRequest, re
 			qosValues, diags := types.ListValueFrom(ctx, types.StringType, assoc.QOS)
 			resp.Diagnostics.Append(diags...)
 			state.AllowedQOS = qosValues
+		}
+		if assoc.Max != nil && assoc.Max.Jobs != nil && assoc.Max.Jobs.Per != nil &&
+			assoc.Max.Jobs.Per.Count != nil && assoc.Max.Jobs.Per.Count.Set {
+			state.MaxJobs = types.Int64Value(int64(assoc.Max.Jobs.Per.Count.Number))
 		}
 	}
 
@@ -294,6 +333,18 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 			return
 		}
 		assoc.QOS = qosList
+	}
+	if !plan.MaxJobs.IsNull() {
+		assoc.Max = &client.AssociationMax{
+			Jobs: &client.AssociationMaxJobs{
+				Per: &client.AssociationMaxJobsPer{
+					Count: &client.SlurmInt{
+						Number: int(plan.MaxJobs.ValueInt64()),
+						Set:    true,
+					},
+				},
+			},
+		}
 	}
 
 	if err := r.client.CreateAssociations([]client.Association{assoc}); err != nil {
