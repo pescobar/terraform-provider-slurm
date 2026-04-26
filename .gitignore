@@ -29,6 +29,9 @@ examples/*.tfstate.backup
 examples/.terraform/
 examples/.terraform.lock.hcl
 
+# goreleaser output
+dist/
+
 # Dev
 .env
 *.swp
