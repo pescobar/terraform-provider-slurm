@@ -48,7 +48,7 @@ resource "slurm_qos" "priority" {
   description  = "High priority QOS with preemption"
   priority     = 500
   max_wall_pj  = 720
-  flags        = ["NoDecay", "DenyOnLimit"]
+  flags        = ["NO_DECAY", "DENY_LIMIT"]
   preempt_list = [slurm_qos.standard.name, slurm_qos.basic.name]
   preempt_mode = ["CANCEL"]
 }
@@ -64,7 +64,7 @@ resource "slurm_qos" "debug" {
   name        = "debug"
   description = "Debug QOS with short wall time"
   max_wall_pj = 60
-  flags       = ["OverPartQOS"]
+  flags       = ["OVERRIDE_PARTITION_QOS"]
 }
 
 # ============================================================================

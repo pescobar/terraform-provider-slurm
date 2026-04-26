@@ -75,7 +75,7 @@ func (r *qosResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Optional:    true,
 			},
 			"flags": schema.ListAttribute{
-				Description: "QOS flags.",
+				Description: "QOS flags. Values must use the REST API name (UPPER_SNAKE_CASE), not the sacctmgr CamelCase names. Valid values: PARTITION_MINIMUM_NODE, PARTITION_MAXIMUM_NODE, PARTITION_TIME_LIMIT, ENFORCE_USAGE_THRESHOLD, NO_RESERVE, REQUIRED_RESERVATION, DENY_LIMIT, OVERRIDE_PARTITION_QOS, NO_DECAY, USAGE_FACTOR_SAFE, RELATIVE.",
 				Optional:    true,
 				ElementType: types.StringType,
 			},

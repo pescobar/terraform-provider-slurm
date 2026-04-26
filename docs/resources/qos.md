@@ -41,7 +41,7 @@ resource "slurm_qos" "priority" {
 ### Optional
 
 - `description` (String) A description of the QOS.
-- `flags` (List of String) QOS flags.
+- `flags` (List of String) QOS flags. Values must use the REST API name (UPPER\_SNAKE\_CASE), which differs from the `sacctmgr` CamelCase names. Valid values: `PARTITION_MINIMUM_NODE`, `PARTITION_MAXIMUM_NODE`, `PARTITION_TIME_LIMIT`, `ENFORCE_USAGE_THRESHOLD`, `NO_RESERVE`, `REQUIRED_RESERVATION`, `DENY_LIMIT`, `OVERRIDE_PARTITION_QOS`, `NO_DECAY`, `USAGE_FACTOR_SAFE`, `RELATIVE`.
 - `max_wall_pj` (Number) Maximum wall clock time per job in minutes.
 - `preempt_list` (List of String) List of QOS names that this QOS can preempt.
 - `preempt_mode` (List of String) Preemption mode (e.g. CANCEL, REQUEUE).
