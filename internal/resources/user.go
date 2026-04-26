@@ -490,10 +490,8 @@ func (r *userResource) extractAssociations(ctx context.Context, model userResour
 		}
 
 		if !am.Fairshare.IsNull() && !am.Fairshare.IsUnknown() {
-			a.Fairshare = &client.SlurmInt{
-				Number: int(am.Fairshare.ValueInt64()),
-				Set:    true,
-			}
+			v := int(am.Fairshare.ValueInt64())
+			a.SharesRaw = &v
 		}
 
 		if !am.DefaultQOS.IsNull() && !am.DefaultQOS.IsUnknown() {
@@ -548,8 +546,8 @@ func (r *userResource) apiAssociationsToState(ctx context.Context, assocs []clie
 			"qos":         types.ListNull(types.StringType),
 		}
 
-		if a.Fairshare != nil && a.Fairshare.Set {
-			attrs["fairshare"] = types.Int64Value(int64(a.Fairshare.Number))
+		if a.SharesRaw != nil {
+			attrs["fairshare"] = types.Int64Value(int64(*a.SharesRaw))
 		}
 
 		if a.Default != nil && a.Default.QOS != "" {

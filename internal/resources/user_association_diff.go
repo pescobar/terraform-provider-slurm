@@ -116,8 +116,8 @@ func associationSortKey(a client.Association) string {
 // It ignores the key fields (account, cluster, partition, user) since those
 // are used for matching, not comparison.
 func associationsEqual(a, b client.Association) bool {
-	// Compare fairshare
-	if !slurmIntEqual(a.Fairshare, b.Fairshare) {
+	// Compare fairshare (shares_raw is a plain *int in the API)
+	if !intPtrEqual(a.SharesRaw, b.SharesRaw) {
 		return false
 	}
 
@@ -137,6 +137,17 @@ func associationsEqual(a, b client.Association) bool {
 	}
 
 	return true
+}
+
+// intPtrEqual compares two *int values.
+func intPtrEqual(a, b *int) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
 }
 
 // slurmIntEqual compares two *SlurmInt values.

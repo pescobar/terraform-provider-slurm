@@ -11,6 +11,11 @@ func slurmInt(n int) *client.SlurmInt {
 	return &client.SlurmInt{Number: n, Set: true}
 }
 
+// helper to create a *int for SharesRaw
+func intPtr(n int) *int {
+	return &n
+}
+
 // helper to create an association with common fields
 func makeAssoc(account, partition string, fairshare int, defaultQOS string, qos []string) client.Association {
 	a := client.Association{
@@ -20,7 +25,7 @@ func makeAssoc(account, partition string, fairshare int, defaultQOS string, qos 
 		User:      "testuser",
 	}
 	if fairshare > 0 {
-		a.Fairshare = slurmInt(fairshare)
+		a.SharesRaw = intPtr(fairshare)
 	}
 	if defaultQOS != "" {
 		a.Default = &client.AssociationDefaults{QOS: defaultQOS}
@@ -138,8 +143,8 @@ func TestDiffAssociations_UpdateFairshare(t *testing.T) {
 	if len(diff.Delete) != 0 {
 		t.Errorf("Expected 0 deletes, got %d", len(diff.Delete))
 	}
-	if diff.Update[0].Fairshare.Number != 200 {
-		t.Errorf("Expected updated fairshare=200, got %d", diff.Update[0].Fairshare.Number)
+	if *diff.Update[0].SharesRaw != 200 {
+		t.Errorf("Expected updated fairshare=200, got %d", *diff.Update[0].SharesRaw)
 	}
 }
 
@@ -208,8 +213,8 @@ func TestDiffAssociations_MixedOperations(t *testing.T) {
 	if diff.Update[0].Account != "physics" {
 		t.Errorf("Expected update for 'physics', got '%s'", diff.Update[0].Account)
 	}
-	if diff.Update[0].Fairshare.Number != 200 {
-		t.Errorf("Expected updated fairshare=200, got %d", diff.Update[0].Fairshare.Number)
+	if *diff.Update[0].SharesRaw != 200 {
+		t.Errorf("Expected updated fairshare=200, got %d", *diff.Update[0].SharesRaw)
 	}
 
 	if len(diff.Delete) != 1 {
@@ -291,7 +296,7 @@ func TestDiffAssociations_MaxJobsChange(t *testing.T) {
 			Account:   "physics",
 			Cluster:   "linux",
 			User:      "testuser",
-			Fairshare: slurmInt(100),
+			SharesRaw: intPtr(100),
 			Max: &client.AssociationMax{
 				Jobs: &client.AssociationMaxJobs{
 					Per: &client.AssociationMaxJobsPer{
@@ -306,7 +311,7 @@ func TestDiffAssociations_MaxJobsChange(t *testing.T) {
 			Account:   "physics",
 			Cluster:   "linux",
 			User:      "testuser",
-			Fairshare: slurmInt(100),
+			SharesRaw: intPtr(100),
 			Max: &client.AssociationMax{
 				Jobs: &client.AssociationMaxJobs{
 					Per: &client.AssociationMaxJobsPer{
@@ -419,8 +424,8 @@ func TestDiffAssociations_ChangeDefaultAccountAssociation(t *testing.T) {
 	if diff.Update[0].Account != "chemistry" {
 		t.Errorf("Expected update for 'chemistry', got '%s'", diff.Update[0].Account)
 	}
-	if diff.Update[0].Fairshare.Number != 80 {
-		t.Errorf("Expected fairshare=80, got %d", diff.Update[0].Fairshare.Number)
+	if *diff.Update[0].SharesRaw != 80 {
+		t.Errorf("Expected fairshare=80, got %d", *diff.Update[0].SharesRaw)
 	}
 	if diff.Update[0].Default.QOS != "high" {
 		t.Errorf("Expected default QOS='high', got '%s'", diff.Update[0].Default.QOS)
