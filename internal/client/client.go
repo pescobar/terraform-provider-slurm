@@ -41,6 +41,12 @@ func NewClient(baseURL, token, cluster, apiVersion string) *Client {
 		APIVersion: apiVersion,
 		HTTPClient: &http.Client{
 			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				// Disable keep-alives to avoid reusing stale connections.
+				// slurmrestd closes connections after a period of inactivity
+				// which causes EOF errors on subsequent requests.
+				DisableKeepAlives: true,
+			},
 		},
 	}
 }
