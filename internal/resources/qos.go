@@ -132,6 +132,17 @@ func (r *qosResource) Create(ctx context.Context, req resource.CreateRequest, re
 
 	plan.ID = plan.Name
 
+	// Read back so that Optional+Computed fields (description) reflect what
+	// Slurm actually stored rather than the plan value, which may be null.
+	created, err := r.client.GetQOS(plan.Name.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Error reading QOS after create", err.Error())
+		return
+	}
+	if created != nil {
+		plan.Description = types.StringValue(created.Description)
+	}
+
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
