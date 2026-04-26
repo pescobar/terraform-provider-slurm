@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     slurm = {
-      source = "pabloqc/slurm"
+      source = "pescobar/slurm"
     }
   }
 }

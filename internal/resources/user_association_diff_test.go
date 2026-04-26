@@ -3,7 +3,7 @@ package resources
 import (
 	"testing"
 
-	"github.com/pabloqc/terraform-provider-slurm/internal/client"
+	"github.com/pescobar/terraform-provider-slurm/internal/client"
 )
 
 // helper to create a *SlurmInt

@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/pabloqc/terraform-provider-slurm/internal/client"
+	"github.com/pescobar/terraform-provider-slurm/internal/client"
 )
 
 // AssociationKey uniquely identifies an association within a user.

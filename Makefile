@@ -4,7 +4,7 @@ VERSION = 0.1.0
 OS_ARCH = $(shell go env GOOS)_$(shell go env GOARCH)
 
 # Local install path for OpenTofu/Terraform dev overrides
-INSTALL_DIR = ~/.terraform.d/plugins/registry.terraform.io/pabloqc/$(PROVIDER_NAME)/$(VERSION)/$(OS_ARCH)
+INSTALL_DIR = ~/.terraform.d/plugins/registry.terraform.io/pescobar/$(PROVIDER_NAME)/$(VERSION)/$(OS_ARCH)
 
 .PHONY: build install clean test testacc fmt vet
 

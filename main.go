@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
-	"github.com/pabloqc/terraform-provider-slurm/internal/provider"
+	"github.com/pescobar/terraform-provider-slurm/internal/provider"
 )
 
 // version is set at build time via ldflags
@@ -19,7 +19,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/pabloqc/slurm",
+		Address: "registry.terraform.io/pescobar/slurm",
 		Debug:   debug,
 	}
 

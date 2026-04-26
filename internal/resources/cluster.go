@@ -12,7 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	"github.com/pabloqc/terraform-provider-slurm/internal/client"
+	"github.com/pescobar/terraform-provider-slurm/internal/client"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
