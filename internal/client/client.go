@@ -407,9 +407,22 @@ type UserDefault struct {
 }
 
 // UserAssociationRequest is the body for POST /slurmdb/{version}/users_association/
+// In API v0.0.42 the endpoint changed: it now takes association_condition with
+// user/account lists, not a users+associations payload.
 type UserAssociationRequest struct {
-	Users        []User        `json:"users"`
-	Associations []Association `json:"associations"`
+	AssociationCondition UserAssociationCondition `json:"association_condition"`
+	User                 UserShort               `json:"user"`
+}
+
+// UserAssociationCondition specifies which user+account combinations to create.
+type UserAssociationCondition struct {
+	Users    []string `json:"users"`
+	Accounts []string `json:"accounts"`
+}
+
+// UserShort is the minimal user object accepted by the users_association endpoint.
+type UserShort struct {
+	AdminLevel []string `json:"administrator_level,omitempty"`
 }
 
 // GetUsers returns all users.

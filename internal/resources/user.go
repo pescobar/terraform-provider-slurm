@@ -193,20 +193,15 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	// Step 1: Create the user with the first association using the atomic endpoint.
-	// We pick the default account's association as the first one.
-	firstAssoc, remainingAssocs := r.splitFirstAssociation(assocs, defaultAccount)
-
+	// Step 1: Create the user entity + initial association via the atomic endpoint.
+	// In API v0.0.42 this endpoint takes association_condition (user/account lists),
+	// not a full users+associations payload. Limits cannot be set here.
 	userReq := client.UserAssociationRequest{
-		Users: []client.User{
-			{
-				Name: userName,
-				Default: &client.UserDefault{
-					Account: defaultAccount,
-				},
-			},
+		AssociationCondition: client.UserAssociationCondition{
+			Users:    []string{userName},
+			Accounts: []string{defaultAccount},
 		},
-		Associations: []client.Association{firstAssoc},
+		User: client.UserShort{},
 	}
 
 	if err := r.client.CreateUserWithAssociation(userReq); err != nil {
@@ -217,15 +212,14 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	// Step 2: Create remaining associations (if any)
-	if len(remainingAssocs) > 0 {
-		if err := r.client.CreateAssociations(remainingAssocs); err != nil {
-			resp.Diagnostics.AddError(
-				"Error creating additional associations",
-				fmt.Sprintf("User '%s' was created but additional associations failed: %s", userName, err.Error()),
-			)
-			return
-		}
+	// Step 2: Set limits on all associations via the associations endpoint (upsert).
+	// This covers both the initial association created above and any additional ones.
+	if err := r.client.CreateAssociations(assocs); err != nil {
+		resp.Diagnostics.AddError(
+			"Error creating associations",
+			fmt.Sprintf("User '%s' was created but associations failed: %s", userName, err.Error()),
+		)
+		return
 	}
 
 	plan.ID = plan.Name
