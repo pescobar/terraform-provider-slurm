@@ -102,13 +102,27 @@ jobs:
           }
           EOF
 
-      - name: Run acceptance tests
+      - name: Run basic acceptance tests
         env:
           TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
           TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
           TF_VAR_slurm_api_version: ${{ matrix.api_version }}
         run: |
           cd examples/
+          tofu apply -auto-approve
+          tofu destroy -auto-approve
+          tofu apply -auto-approve
+          tofu destroy -auto-approve
+
+      - name: Run advanced acceptance tests
+        env:
+          TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
+          TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
+          TF_VAR_slurm_api_version: ${{ matrix.api_version }}
+        run: |
+          cd examples/advanced-acceptance-tests/
+          tofu apply -auto-approve
+          tofu destroy -auto-approve
           tofu apply -auto-approve
           tofu destroy -auto-approve
 
