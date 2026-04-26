@@ -224,6 +224,54 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	plan.ID = plan.Name
 
+	// Resolve Optional+Computed fields that are unknown when not set in config.
+	// The framework requires all values to be known after apply.
+	if plan.AdminLevel.IsUnknown() {
+		plan.AdminLevel = types.StringValue("None")
+	}
+
+	// Resolve unknown partition values within each association block.
+	// Partition is Optional+Computed; when omitted it is "" (no partition scoping).
+	if !plan.Associations.IsNull() && !plan.Associations.IsUnknown() {
+		var assocModels []associationModel
+		diags = plan.Associations.ElementsAs(ctx, &assocModels, false)
+		resp.Diagnostics.Append(diags...)
+		if !resp.Diagnostics.HasError() {
+			anyUnknown := false
+			for _, am := range assocModels {
+				if am.Partition.IsUnknown() {
+					anyUnknown = true
+					break
+				}
+			}
+			if anyUnknown {
+				for i := range assocModels {
+					if assocModels[i].Partition.IsUnknown() {
+						assocModels[i].Partition = types.StringValue("")
+					}
+				}
+				assocObjects := make([]attr.Value, len(assocModels))
+				for i, am := range assocModels {
+					obj, d := types.ObjectValue(associationModelType(), map[string]attr.Value{
+						"account":     am.Account,
+						"partition":   am.Partition,
+						"fairshare":   am.Fairshare,
+						"default_qos": am.DefaultQOS,
+						"max_jobs":    am.MaxJobsPU,
+						"qos":         am.QOS,
+					})
+					resp.Diagnostics.Append(d...)
+					assocObjects[i] = obj
+				}
+				plan.Associations, diags = types.SetValue(
+					types.ObjectType{AttrTypes: associationModelType()},
+					assocObjects,
+				)
+				resp.Diagnostics.Append(diags...)
+			}
+		}
+	}
+
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
