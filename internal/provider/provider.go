@@ -145,6 +145,14 @@ func (p *slurmProvider) Configure(ctx context.Context, req provider.ConfigureReq
 		return
 	}
 
+	if err := c.EnsureCluster(); err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to register Slurm cluster",
+			"The provider failed to register cluster '"+cluster+"' in slurmdbd: "+err.Error(),
+		)
+		return
+	}
+
 	tflog.Info(ctx, "Slurm provider configured successfully")
 
 	// Make the client available to resources and data sources.
@@ -156,7 +164,6 @@ func (p *slurmProvider) Configure(ctx context.Context, req provider.ConfigureReq
 // Resources defines the resources implemented by this provider.
 func (p *slurmProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		resources.NewClusterResource,
 		resources.NewAccountResource,
 		resources.NewQOSResource,
 		resources.NewUserResource,

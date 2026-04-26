@@ -94,8 +94,10 @@ func (c *Client) slurmdbPath(endpoint string) string {
 // for Slurm-level errors.
 func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error) {
 	var bodyReader io.Reader
+	var jsonBody []byte
 	if body != nil {
-		jsonBody, err := json.Marshal(body)
+		var err error
+		jsonBody, err = json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request body: %w", err)
 		}
@@ -206,6 +208,20 @@ func (c *Client) CreateCluster(cluster Cluster) error {
 	}
 	_, err := c.doRequest(http.MethodPost, c.slurmdbPath("clusters/"), body)
 	return err
+}
+
+// EnsureCluster registers the cluster in slurmdbd only if it does not already
+// exist. We intentionally do NOT update an existing cluster to avoid overwriting
+// its TRES configuration (set by slurmctld at startup) with an empty object.
+func (c *Client) EnsureCluster() error {
+	existing, err := c.GetCluster(c.Cluster)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		return nil
+	}
+	return c.CreateCluster(Cluster{Name: c.Cluster})
 }
 
 // DeleteCluster deletes a cluster by name.
@@ -404,7 +420,7 @@ func (c *Client) GetQOS(name string) (*QOS, error) {
 	return &resp.QOS[0], nil
 }
 
-// CreateQOS creates or updates QOS entries.
+// CreateQOS creates or updates a QOS entry.
 func (c *Client) CreateQOS(qos QOS) error {
 	body := map[string][]QOS{
 		"qos": {qos},
