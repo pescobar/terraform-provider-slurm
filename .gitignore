@@ -1,0 +1,35 @@
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# Provider binary
+terraform-provider-slurm
+
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Examples state
+examples/*.tfstate
+examples/*.tfstate.backup
+examples/.terraform/
+examples/.terraform.lock.hcl
+
+# Dev
+.env
+*.swp
+*.swo
