@@ -55,4 +55,8 @@ resource "slurm_account" "physics" {
 resource "slurm_user" "bob" {
   name            = "bob"
   default_account = slurm_account.physics.name
+
+  association {
+    account = slurm_account.physics.name
+  }
 }
