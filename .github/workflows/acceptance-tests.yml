@@ -29,7 +29,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
 
       # -----------------------------------------------------------------------
       # Start the Slurm cluster from pre-built GHCR images (public, no auth needed)

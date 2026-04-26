@@ -1,5 +1,8 @@
 # Terraform / OpenTofu Provider for Slurm
 
+[![Unit Tests](https://github.com/pescobar/terraform-provider-slurm/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/pescobar/terraform-provider-slurm/actions/workflows/unit-tests.yml)
+[![Acceptance Tests](https://github.com/pescobar/terraform-provider-slurm/actions/workflows/acceptance-tests.yml/badge.svg)](https://github.com/pescobar/terraform-provider-slurm/actions/workflows/acceptance-tests.yml)
+
 Manages Slurm HPC accounting resources — accounts, users, and QOS — via the
 [slurmrestd](https://slurm.schedmd.com/rest.html) REST API.  Covers the same
 persistent entities that `sacctmgr` handles; ephemeral objects like jobs and
