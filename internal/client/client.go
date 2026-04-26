@@ -358,10 +358,12 @@ type QOS struct {
 }
 
 // SlurmInt represents Slurm's integer type which includes set/infinite flags.
+// Omitting infinite when false matches slurmrestd's default and avoids sending
+// an explicit "infinite":false that can confuse slurmdbd's query-back logic.
 type SlurmInt struct {
 	Number   int  `json:"number"`
 	Set      bool `json:"set"`
-	Infinite bool `json:"infinite"`
+	Infinite bool `json:"infinite,omitempty"`
 }
 
 // QOSLimits contains the limit configuration for a QOS.
