@@ -3,7 +3,7 @@
 [![Unit Tests](https://github.com/pescobar/terraform-provider-slurm/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/pescobar/terraform-provider-slurm/actions/workflows/unit-tests.yml)
 [![Acceptance Tests](https://github.com/pescobar/terraform-provider-slurm/actions/workflows/acceptance-tests.yml/badge.svg)](https://github.com/pescobar/terraform-provider-slurm/actions/workflows/acceptance-tests.yml)
 
-Manages Slurm HPC accounting resources — accounts, users, and QOS — via the
+Manages Slurm accounting resources — accounts, users, and QOS — via the
 [slurmrestd](https://slurm.schedmd.com/rest.html) REST API.  Covers the same
 persistent entities that `sacctmgr` handles; ephemeral objects like jobs and
 reservations are out of scope.
@@ -21,16 +21,55 @@ reservations are out of scope.
 ## Authentication
 
 The provider authenticates to slurmrestd using a JWT token passed in the
-`X-SLURM-USER-TOKEN` header.  Tokens are short-lived (30 minutes by default);
-generate one with:
+`X-SLURM-USER-TOKEN` header, either via the `token` argument or the
+`SLURM_JWT_TOKEN` environment variable.
+
+### Short-lived token (development)
 
 ```bash
-export SLURM_JWT_TOKEN=$(docker exec slurmctld scontrol token lifespan=3600 \
-  | sed 's/SLURM_JWT=//')
+export SLURM_JWT_TOKEN=$(scontrol token lifespan=3600 | sed 's/SLURM_JWT=//')
 ```
 
-For production deployments consider generating tokens from a JWT key file so
-the provider can renew them without manual intervention.
+The default lifespan is 1800 s (30 min). Fine for one-off runs but not
+suitable for production pipelines.
+
+### Long-lived token (production)
+
+`scontrol token` accepts any lifespan in seconds. Generate a token that lasts
+a year, store it in your secrets manager or CI secret store, and rotate it
+annually:
+
+```bash
+# 1 year = 31 536 000 seconds
+export SLURM_JWT_TOKEN=$(scontrol token lifespan=31536000 | sed 's/SLURM_JWT=//')
+```
+
+Pass it to the provider via environment variable (recommended — keeps it out
+of plan output and state):
+
+```bash
+export SLURM_JWT_TOKEN="<value from secrets manager>"
+tofu apply
+```
+
+Or supply it as a sensitive Terraform variable:
+
+```hcl
+variable "slurm_token" {
+  type      = string
+  sensitive = true
+}
+
+provider "slurm" {
+  endpoint = "http://slurmrestd.example.com:6820"
+  token    = var.slurm_token
+  cluster  = "mycluster"
+}
+```
+
+```bash
+tofu apply -var="slurm_token=$SLURM_JWT_TOKEN"
+```
 
 ## Provider Configuration
 
