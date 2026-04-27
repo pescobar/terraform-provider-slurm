@@ -33,29 +33,75 @@ type userResourceModel struct {
 	Name           types.String `tfsdk:"name"`
 	AdminLevel     types.String `tfsdk:"admin_level"`
 	DefaultAccount types.String `tfsdk:"default_account"`
+	DefaultWCKey   types.String `tfsdk:"default_wc_key"`
 	Associations   types.Set    `tfsdk:"association"`
 }
 
 // associationModel maps a single embedded association block.
 type associationModel struct {
-	Account    types.String `tfsdk:"account"`
-	Partition  types.String `tfsdk:"partition"`
-	Fairshare  types.Int64  `tfsdk:"fairshare"`
+	Account   types.String `tfsdk:"account"`
+	Partition types.String `tfsdk:"partition"`
+	// Priority and fairshare
+	Fairshare types.Int64 `tfsdk:"fairshare"`
+	Priority  types.Int64 `tfsdk:"priority"`
+	// Default settings
 	DefaultQOS types.String `tfsdk:"default_qos"`
-	MaxJobsPU  types.Int64  `tfsdk:"max_jobs"`
 	QOS        types.List   `tfsdk:"qos"`
+	// Max job-count limits
+	MaxJobs       types.Int64 `tfsdk:"max_jobs"`
+	MaxJobsAccrue types.Int64 `tfsdk:"max_jobs_accrue"`
+	MaxSubmitJobs types.Int64 `tfsdk:"max_submit_jobs"`
+	// Max wall-clock
+	MaxWallPJ types.Int64 `tfsdk:"max_wall_pj"`
+	// Max TRES limits
+	MaxTRESPerJob    types.Set `tfsdk:"max_tres_per_job"`
+	MaxTRESPerNode   types.Set `tfsdk:"max_tres_per_node"`
+	MaxTRESMinsPerJob types.Set `tfsdk:"max_tres_mins_per_job"`
+	// Grp job-count limits
+	GrpJobs       types.Int64 `tfsdk:"grp_jobs"`
+	GrpJobsAccrue types.Int64 `tfsdk:"grp_jobs_accrue"`
+	GrpSubmitJobs types.Int64 `tfsdk:"grp_submit_jobs"`
+	// Grp wall-clock
+	GrpWall types.Int64 `tfsdk:"grp_wall"`
+	// Grp TRES limits
+	GrpTRES        types.Set `tfsdk:"grp_tres"`
+	GrpTRESMins    types.Set `tfsdk:"grp_tres_mins"`
+	GrpTRESRunMins types.Set `tfsdk:"grp_tres_run_mins"`
 }
 
 // associationModelType returns the object type definition for an association block.
 // This is needed for TypeSet to know the shape of each element.
 func associationModelType() map[string]attr.Type {
+	tresST := types.SetType{ElemType: tresElemType()}
 	return map[string]attr.Type{
-		"account":     types.StringType,
-		"partition":   types.StringType,
-		"fairshare":   types.Int64Type,
+		"account":   types.StringType,
+		"partition": types.StringType,
+		// Priority and fairshare
+		"fairshare": types.Int64Type,
+		"priority":  types.Int64Type,
+		// Default settings
 		"default_qos": types.StringType,
-		"max_jobs":    types.Int64Type,
 		"qos":         types.ListType{ElemType: types.StringType},
+		// Max job-count limits
+		"max_jobs":        types.Int64Type,
+		"max_jobs_accrue": types.Int64Type,
+		"max_submit_jobs": types.Int64Type,
+		// Max wall-clock
+		"max_wall_pj": types.Int64Type,
+		// Max TRES limits
+		"max_tres_per_job":     tresST,
+		"max_tres_per_node":    tresST,
+		"max_tres_mins_per_job": tresST,
+		// Grp job-count limits
+		"grp_jobs":        types.Int64Type,
+		"grp_jobs_accrue": types.Int64Type,
+		"grp_submit_jobs": types.Int64Type,
+		// Grp wall-clock
+		"grp_wall": types.Int64Type,
+		// Grp TRES limits
+		"grp_tres":         tresST,
+		"grp_tres_mins":    tresST,
+		"grp_tres_run_mins": tresST,
 	}
 }
 
@@ -135,6 +181,10 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Description: "The user's default Slurm account. Must match one of the association accounts.",
 				Required:    true,
 			},
+			"default_wc_key": schema.StringAttribute{
+				Description: "Default workload characterization key for the user.",
+				Optional:    true,
+			},
 		},
 		Blocks: map[string]schema.Block{
 			"association": schema.SetNestedBlock{
@@ -152,15 +202,15 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 							Optional:    true,
 						},
 						"fairshare": schema.Int64Attribute{
-							Description: "Fairshare value for this association.",
+							Description: "Fairshare value for this association (default: 1).",
+							Optional:    true,
+						},
+						"priority": schema.Int64Attribute{
+							Description: "Association-level priority (distinct from QOS priority).",
 							Optional:    true,
 						},
 						"default_qos": schema.StringAttribute{
 							Description: "Default QOS for this association.",
-							Optional:    true,
-						},
-						"max_jobs": schema.Int64Attribute{
-							Description: "Maximum number of running jobs for this association.",
 							Optional:    true,
 						},
 						"qos": schema.ListAttribute{
@@ -168,6 +218,50 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 							Optional:    true,
 							ElementType: types.StringType,
 						},
+						// Max job-count limits
+						"max_jobs": schema.Int64Attribute{
+							Description: "Maximum number of running jobs for this association (MaxJobs).",
+							Optional:    true,
+						},
+						"max_jobs_accrue": schema.Int64Attribute{
+							Description: "Maximum pending jobs that can accrue age priority (MaxJobsAccrue).",
+							Optional:    true,
+						},
+						"max_submit_jobs": schema.Int64Attribute{
+							Description: "Maximum number of jobs that can be submitted at once (MaxSubmitJobs).",
+							Optional:    true,
+						},
+						// Max wall-clock
+						"max_wall_pj": schema.Int64Attribute{
+							Description: "Maximum wall-clock time per job in minutes (MaxWallDurationPerJob).",
+							Optional:    true,
+						},
+						// Max TRES limits
+						"max_tres_per_job":      tresOptionalSchemaAttr("Maximum TRES per job (MaxTRES). Each entry specifies type, optional name, and count."),
+						"max_tres_per_node":     tresOptionalSchemaAttr("Maximum TRES per node per job (MaxTRESPerNode)."),
+						"max_tres_mins_per_job": tresOptionalSchemaAttr("Maximum TRES-minutes per job (MaxTRESMins)."),
+						// Grp job-count limits
+						"grp_jobs": schema.Int64Attribute{
+							Description: "Maximum running jobs across all users in this association group (GrpJobs).",
+							Optional:    true,
+						},
+						"grp_jobs_accrue": schema.Int64Attribute{
+							Description: "Maximum pending jobs accruing priority across the group (GrpJobsAccrue).",
+							Optional:    true,
+						},
+						"grp_submit_jobs": schema.Int64Attribute{
+							Description: "Maximum submitted jobs across the group (GrpSubmitJobs).",
+							Optional:    true,
+						},
+						// Grp wall-clock
+						"grp_wall": schema.Int64Attribute{
+							Description: "Maximum cumulative wall-clock minutes for running jobs in the group (GrpWall).",
+							Optional:    true,
+						},
+						// Grp TRES limits
+						"grp_tres":          tresOptionalSchemaAttr("Maximum TRES in use at once across the group (GrpTRES)."),
+						"grp_tres_mins":     tresOptionalSchemaAttr("Maximum TRES-minutes for the group (GrpTRESMins)."),
+						"grp_tres_run_mins": tresOptionalSchemaAttr("Maximum TRES-minutes of currently running jobs for the group (GrpTRESRunMins)."),
 					},
 				},
 			},
@@ -257,21 +351,29 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 
 	// The users_association endpoint ignores administrator_level even when sent.
-	// Apply it with a separate UpdateUser call when a non-default level is needed.
+	// Apply admin_level and default_wc_key with a separate UpdateUser call.
+	needsUpdate := false
+	updateUser := client.User{
+		Name:    userName,
+		Default: &client.UserDefault{Account: defaultAccount},
+	}
 	if !plan.AdminLevel.IsNull() && !plan.AdminLevel.IsUnknown() {
 		if al := plan.AdminLevel.ValueString(); al != "" && al != "None" {
-			u := client.User{
-				Name:       userName,
-				AdminLevel: []string{al},
-				Default:    &client.UserDefault{Account: defaultAccount},
-			}
-			if err := r.client.UpdateUser(u); err != nil {
-				resp.Diagnostics.AddError(
-					"Error setting admin level for new user",
-					fmt.Sprintf("User '%s' was created but admin_level could not be set: %s", userName, err.Error()),
-				)
-				return
-			}
+			updateUser.AdminLevel = []string{al}
+			needsUpdate = true
+		}
+	}
+	if !plan.DefaultWCKey.IsNull() && !plan.DefaultWCKey.IsUnknown() {
+		updateUser.Default.WCKey = plan.DefaultWCKey.ValueString()
+		needsUpdate = true
+	}
+	if needsUpdate {
+		if err := r.client.UpdateUser(updateUser); err != nil {
+			resp.Diagnostics.AddError(
+				"Error setting user attributes after creation",
+				fmt.Sprintf("User '%s' was created but attributes could not be set: %s", userName, err.Error()),
+			)
+			return
 		}
 	}
 
@@ -329,9 +431,14 @@ func (r *userResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		state.AdminLevel = types.StringValue("None")
 	}
 
-	// Default account from API
-	if user.Default != nil && user.Default.Account != "" {
-		state.DefaultAccount = types.StringValue(user.Default.Account)
+	// Default account and wc_key from API
+	if user.Default != nil {
+		if user.Default.Account != "" {
+			state.DefaultAccount = types.StringValue(user.Default.Account)
+		}
+		if user.Default.WCKey != "" && !state.DefaultWCKey.IsNull() {
+			state.DefaultWCKey = types.StringValue(user.Default.WCKey)
+		}
 	}
 
 	// Read associations for this user
@@ -451,21 +558,21 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	}
 
 	// --- Step 2: Update user-level attributes ---
-	// This includes default_account and admin_level changes.
+	wcKeyChanged := state.DefaultWCKey.ValueString() != plan.DefaultWCKey.ValueString()
 	if oldDefaultAccount != newDefaultAccount ||
-		state.AdminLevel.ValueString() != plan.AdminLevel.ValueString() {
+		state.AdminLevel.ValueString() != plan.AdminLevel.ValueString() ||
+		wcKeyChanged {
 
 		user := client.User{
-			Name: userName,
-			Default: &client.UserDefault{
-				Account: newDefaultAccount,
-			},
+			Name:    userName,
+			Default: &client.UserDefault{Account: newDefaultAccount},
 		}
-
 		if !plan.AdminLevel.IsNull() && !plan.AdminLevel.IsUnknown() {
 			user.AdminLevel = []string{plan.AdminLevel.ValueString()}
 		}
-
+		if !plan.DefaultWCKey.IsNull() && !plan.DefaultWCKey.IsUnknown() {
+			user.Default.WCKey = plan.DefaultWCKey.ValueString()
+		}
 		if err := r.client.UpdateUser(user); err != nil {
 			resp.Diagnostics.AddError(
 				"Error updating user",
@@ -577,23 +684,16 @@ func (r *userResource) extractAssociations(ctx context.Context, model userResour
 			a.SharesRaw = &v
 		}
 
-		if !am.DefaultQOS.IsNull() && !am.DefaultQOS.IsUnknown() {
-			a.Default = &client.AssociationDefaults{
-				QOS: am.DefaultQOS.ValueString(),
-			}
+		if !am.Priority.IsNull() && !am.Priority.IsUnknown() {
+			a.Priority = &client.SlurmInt{Number: int(am.Priority.ValueInt64()), Set: true}
 		}
 
-		if !am.MaxJobsPU.IsNull() && !am.MaxJobsPU.IsUnknown() {
-			a.Max = &client.AssociationMax{
-				Jobs: &client.AssociationMaxJobs{
-					Per: &client.AssociationMaxJobsPer{
-						Count: &client.SlurmInt{
-							Number: int(am.MaxJobsPU.ValueInt64()),
-							Set:    true,
-						},
-					},
-				},
+		// Default settings
+		if !am.DefaultQOS.IsNull() && !am.DefaultQOS.IsUnknown() {
+			if a.Default == nil {
+				a.Default = &client.AssociationDefaults{}
 			}
+			a.Default.QOS = am.DefaultQOS.ValueString()
 		}
 
 		if !am.QOS.IsNull() && !am.QOS.IsUnknown() {
@@ -603,10 +703,158 @@ func (r *userResource) extractAssociations(ctx context.Context, model userResour
 			a.QOS = qosList
 		}
 
+		a.Max = r.extractAssocMax(ctx, am, diagnostics)
+
 		result = append(result, a)
 	}
 
 	return result
+}
+
+// extractAssocMax builds the AssociationMax struct from an association model.
+// Returns nil when no limits are configured.
+//
+// API path reference (v0.0.42):
+//
+//	MaxJobs        → max.jobs.active
+//	MaxJobsAccrue  → max.jobs.accruing
+//	MaxSubmitJobs  → max.jobs.total
+//	MaxWall        → max.jobs.per.wall_clock  (minutes)
+//	GrpJobs        → max.jobs.per.count
+//	GrpJobsAccrue  → max.jobs.per.accruing
+//	GrpSubmitJobs  → max.jobs.per.submitted
+//	GrpWall        → max.per.account.wall_clock  (minutes)
+//	MaxTRES        → max.tres.per.job
+//	MaxTRESPerNode → max.tres.per.node
+//	MaxTRESMins    → max.tres.minutes.per.job
+//	GrpTRES        → max.tres.total
+//	GrpTRESMins    → max.tres.group.minutes
+//	GrpTRESRunMins → max.tres.group.active
+func (r *userResource) extractAssocMax(ctx context.Context, am associationModel, diagnostics *diag.Diagnostics) *client.AssociationMax {
+	var m client.AssociationMax
+	set := false
+
+	// ---- max.jobs ----
+	var jobs client.AssociationMaxJobs
+	var jobsPer client.AssociationMaxJobsPer
+	jobsSet, jobsPerSet := false, false
+
+	if !am.MaxJobs.IsNull() && !am.MaxJobs.IsUnknown() {
+		jobs.Active = &client.SlurmInt{Number: int(am.MaxJobs.ValueInt64()), Set: true}
+		jobsSet = true
+	}
+	if !am.MaxJobsAccrue.IsNull() && !am.MaxJobsAccrue.IsUnknown() {
+		jobs.Accruing = &client.SlurmInt{Number: int(am.MaxJobsAccrue.ValueInt64()), Set: true}
+		jobsSet = true
+	}
+	if !am.MaxSubmitJobs.IsNull() && !am.MaxSubmitJobs.IsUnknown() {
+		jobs.Total = &client.SlurmInt{Number: int(am.MaxSubmitJobs.ValueInt64()), Set: true}
+		jobsSet = true
+	}
+	if !am.MaxWallPJ.IsNull() && !am.MaxWallPJ.IsUnknown() {
+		jobsPer.WallClock = &client.SlurmInt{Number: int(am.MaxWallPJ.ValueInt64()), Set: true}
+		jobsPerSet = true
+	}
+	if !am.GrpJobs.IsNull() && !am.GrpJobs.IsUnknown() {
+		jobsPer.Count = &client.SlurmInt{Number: int(am.GrpJobs.ValueInt64()), Set: true}
+		jobsPerSet = true
+	}
+	if !am.GrpJobsAccrue.IsNull() && !am.GrpJobsAccrue.IsUnknown() {
+		jobsPer.Accruing = &client.SlurmInt{Number: int(am.GrpJobsAccrue.ValueInt64()), Set: true}
+		jobsPerSet = true
+	}
+	if !am.GrpSubmitJobs.IsNull() && !am.GrpSubmitJobs.IsUnknown() {
+		jobsPer.Submitted = &client.SlurmInt{Number: int(am.GrpSubmitJobs.ValueInt64()), Set: true}
+		jobsPerSet = true
+	}
+	if jobsPerSet {
+		jobs.Per = &jobsPer
+		jobsSet = true
+	}
+	if jobsSet {
+		m.Jobs = &jobs
+		set = true
+	}
+
+	// ---- max.tres ----
+	var tres client.AssociationMaxTRES
+	tresSet := false
+
+	if !am.MaxTRESPerJob.IsNull() && !am.MaxTRESPerJob.IsUnknown() {
+		list := planTresListToAPI(ctx, am.MaxTRESPerJob)
+		if len(list) > 0 {
+			if tres.Per == nil {
+				tres.Per = &client.AssociationMaxTRESPer{}
+			}
+			tres.Per.Job = list
+			tresSet = true
+		}
+	}
+	if !am.MaxTRESPerNode.IsNull() && !am.MaxTRESPerNode.IsUnknown() {
+		list := planTresListToAPI(ctx, am.MaxTRESPerNode)
+		if len(list) > 0 {
+			if tres.Per == nil {
+				tres.Per = &client.AssociationMaxTRESPer{}
+			}
+			tres.Per.Node = list
+			tresSet = true
+		}
+	}
+	if !am.MaxTRESMinsPerJob.IsNull() && !am.MaxTRESMinsPerJob.IsUnknown() {
+		list := planTresListToAPI(ctx, am.MaxTRESMinsPerJob)
+		if len(list) > 0 {
+			tres.Minutes = &client.AssociationMaxTRESMins{
+				Per: &client.AssociationMaxTRESMinsPer{Job: list},
+			}
+			tresSet = true
+		}
+	}
+	if !am.GrpTRES.IsNull() && !am.GrpTRES.IsUnknown() {
+		list := planTresListToAPI(ctx, am.GrpTRES)
+		if len(list) > 0 {
+			tres.Total = list
+			tresSet = true
+		}
+	}
+	if !am.GrpTRESMins.IsNull() && !am.GrpTRESMins.IsUnknown() {
+		list := planTresListToAPI(ctx, am.GrpTRESMins)
+		if len(list) > 0 {
+			if tres.Group == nil {
+				tres.Group = &client.AssociationMaxTRESGroup{}
+			}
+			tres.Group.Minutes = list
+			tresSet = true
+		}
+	}
+	if !am.GrpTRESRunMins.IsNull() && !am.GrpTRESRunMins.IsUnknown() {
+		list := planTresListToAPI(ctx, am.GrpTRESRunMins)
+		if len(list) > 0 {
+			if tres.Group == nil {
+				tres.Group = &client.AssociationMaxTRESGroup{}
+			}
+			tres.Group.Active = list
+			tresSet = true
+		}
+	}
+	if tresSet {
+		m.TRES = &tres
+		set = true
+	}
+
+	// ---- max.per.account.wall_clock (GrpWall) ----
+	if !am.GrpWall.IsNull() && !am.GrpWall.IsUnknown() {
+		m.Per = &client.AssociationMaxPerNode{
+			Account: &client.AssociationMaxPerAccount{
+				WallClock: &client.SlurmInt{Number: int(am.GrpWall.ValueInt64()), Set: true},
+			},
+		}
+		set = true
+	}
+
+	if !set {
+		return nil
+	}
+	return &m
 }
 
 // apiAssociationsToState converts API association responses to Terraform
@@ -616,7 +864,11 @@ func (r *userResource) extractAssociations(ctx context.Context, model userResour
 // default and inherited values for Optional fields. If a field was null in
 // the prior state we keep it null even if the API returns a default value,
 // preventing spurious drift on every subsequent apply.
+// When hasPrior is false (import, or first read before any apply), we
+// include all API values so imports capture the full server state.
 func (r *userResource) apiAssociationsToState(ctx context.Context, assocs []client.Association, priorAssocMap map[string]associationModel, diagnostics *diag.Diagnostics) []attr.Value {
+	nullTRES := types.SetNull(tresElemType())
+
 	var result []attr.Value
 
 	for _, a := range assocs {
@@ -628,7 +880,6 @@ func (r *userResource) apiAssociationsToState(ctx context.Context, assocs []clie
 		key := a.Account + "|" + a.Partition
 		prior, hasPrior := priorAssocMap[key]
 
-		// Partition: null when empty (partition is just Optional, not Computed).
 		var partitionVal attr.Value
 		if a.Partition != "" {
 			partitionVal = types.StringValue(a.Partition)
@@ -637,39 +888,120 @@ func (r *userResource) apiAssociationsToState(ctx context.Context, assocs []clie
 		}
 
 		attrs := map[string]attr.Value{
-			"account":     types.StringValue(a.Account),
-			"partition":   partitionVal,
-			"fairshare":   types.Int64Null(),
+			"account":   types.StringValue(a.Account),
+			"partition": partitionVal,
+			// Priority and fairshare
+			"fairshare": types.Int64Null(),
+			"priority":  types.Int64Null(),
+			// Default settings
 			"default_qos": types.StringNull(),
-			"max_jobs":    types.Int64Null(),
 			"qos":         types.ListNull(types.StringType),
+			// Max job-count
+			"max_jobs":        types.Int64Null(),
+			"max_jobs_accrue": types.Int64Null(),
+			"max_submit_jobs": types.Int64Null(),
+			// Max wall-clock
+			"max_wall_pj": types.Int64Null(),
+			// Max TRES
+			"max_tres_per_job":      nullTRES,
+			"max_tres_per_node":     nullTRES,
+			"max_tres_mins_per_job": nullTRES,
+			// Grp job-count
+			"grp_jobs":        types.Int64Null(),
+			"grp_jobs_accrue": types.Int64Null(),
+			"grp_submit_jobs": types.Int64Null(),
+			// Grp wall-clock
+			"grp_wall": types.Int64Null(),
+			// Grp TRES
+			"grp_tres":          nullTRES,
+			"grp_tres_mins":     nullTRES,
+			"grp_tres_run_mins": nullTRES,
 		}
 
-		// For each Optional field: only include the API value if the prior state
-		// already had it set (non-null). This prevents Slurm's auto-set defaults
-		// (e.g. fairshare=1, inherited default_qos, inherited qos list) from
-		// appearing as drift on every apply after the resource is created.
-		// When hasPrior is false (import, or first read before any apply), we
-		// include all API values so imports capture the full server state.
-
+		// fairshare
 		if a.SharesRaw != nil && (!hasPrior || !prior.Fairshare.IsNull()) {
 			attrs["fairshare"] = types.Int64Value(int64(*a.SharesRaw))
 		}
 
+		// priority
+		if a.Priority != nil && a.Priority.Set && (!hasPrior || !prior.Priority.IsNull()) {
+			attrs["priority"] = types.Int64Value(int64(a.Priority.Number))
+		}
+
+		// default_qos
 		if a.Default != nil && a.Default.QOS != "" && (!hasPrior || !prior.DefaultQOS.IsNull()) {
 			attrs["default_qos"] = types.StringValue(a.Default.QOS)
 		}
 
-		if a.Max != nil && a.Max.Jobs != nil && a.Max.Jobs.Per != nil &&
-			a.Max.Jobs.Per.Count != nil && a.Max.Jobs.Per.Count.Set &&
-			(!hasPrior || !prior.MaxJobsPU.IsNull()) {
-			attrs["max_jobs"] = types.Int64Value(int64(a.Max.Jobs.Per.Count.Number))
-		}
-
+		// qos list
 		if len(a.QOS) > 0 && (!hasPrior || !prior.QOS.IsNull()) {
 			qosVal, diags := types.ListValueFrom(ctx, types.StringType, a.QOS)
 			diagnostics.Append(diags...)
 			attrs["qos"] = qosVal
+		}
+
+		// max.jobs.*
+		if a.Max != nil && a.Max.Jobs != nil {
+			j := a.Max.Jobs
+			if j.Active != nil && j.Active.Set && (!hasPrior || !prior.MaxJobs.IsNull()) {
+				attrs["max_jobs"] = types.Int64Value(int64(j.Active.Number))
+			}
+			if j.Accruing != nil && j.Accruing.Set && (!hasPrior || !prior.MaxJobsAccrue.IsNull()) {
+				attrs["max_jobs_accrue"] = types.Int64Value(int64(j.Accruing.Number))
+			}
+			if j.Total != nil && j.Total.Set && (!hasPrior || !prior.MaxSubmitJobs.IsNull()) {
+				attrs["max_submit_jobs"] = types.Int64Value(int64(j.Total.Number))
+			}
+			if j.Per != nil {
+				if j.Per.WallClock != nil && j.Per.WallClock.Set && (!hasPrior || !prior.MaxWallPJ.IsNull()) {
+					attrs["max_wall_pj"] = types.Int64Value(int64(j.Per.WallClock.Number))
+				}
+				if j.Per.Count != nil && j.Per.Count.Set && (!hasPrior || !prior.GrpJobs.IsNull()) {
+					attrs["grp_jobs"] = types.Int64Value(int64(j.Per.Count.Number))
+				}
+				if j.Per.Accruing != nil && j.Per.Accruing.Set && (!hasPrior || !prior.GrpJobsAccrue.IsNull()) {
+					attrs["grp_jobs_accrue"] = types.Int64Value(int64(j.Per.Accruing.Number))
+				}
+				if j.Per.Submitted != nil && j.Per.Submitted.Set && (!hasPrior || !prior.GrpSubmitJobs.IsNull()) {
+					attrs["grp_submit_jobs"] = types.Int64Value(int64(j.Per.Submitted.Number))
+				}
+			}
+		}
+
+		// max.per.account.wall_clock (GrpWall)
+		if a.Max != nil && a.Max.Per != nil && a.Max.Per.Account != nil &&
+			a.Max.Per.Account.WallClock != nil && a.Max.Per.Account.WallClock.Set &&
+			(!hasPrior || !prior.GrpWall.IsNull()) {
+			attrs["grp_wall"] = types.Int64Value(int64(a.Max.Per.Account.WallClock.Number))
+		}
+
+		// max.tres.*
+		if a.Max != nil && a.Max.TRES != nil {
+			t := a.Max.TRES
+			if len(t.Total) > 0 && (!hasPrior || !prior.GrpTRES.IsNull()) {
+				attrs["grp_tres"] = apiTresListToSet(ctx, t.Total, diagnostics)
+			}
+			if t.Group != nil {
+				if len(t.Group.Minutes) > 0 && (!hasPrior || !prior.GrpTRESMins.IsNull()) {
+					attrs["grp_tres_mins"] = apiTresListToSet(ctx, t.Group.Minutes, diagnostics)
+				}
+				if len(t.Group.Active) > 0 && (!hasPrior || !prior.GrpTRESRunMins.IsNull()) {
+					attrs["grp_tres_run_mins"] = apiTresListToSet(ctx, t.Group.Active, diagnostics)
+				}
+			}
+			if t.Per != nil {
+				if len(t.Per.Job) > 0 && (!hasPrior || !prior.MaxTRESPerJob.IsNull()) {
+					attrs["max_tres_per_job"] = apiTresListToSet(ctx, t.Per.Job, diagnostics)
+				}
+				if len(t.Per.Node) > 0 && (!hasPrior || !prior.MaxTRESPerNode.IsNull()) {
+					attrs["max_tres_per_node"] = apiTresListToSet(ctx, t.Per.Node, diagnostics)
+				}
+			}
+			if t.Minutes != nil && t.Minutes.Per != nil {
+				if len(t.Minutes.Per.Job) > 0 && (!hasPrior || !prior.MaxTRESMinsPerJob.IsNull()) {
+					attrs["max_tres_mins_per_job"] = apiTresListToSet(ctx, t.Minutes.Per.Job, diagnostics)
+				}
+			}
 		}
 
 		obj, diags := types.ObjectValue(associationModelType(), attrs)

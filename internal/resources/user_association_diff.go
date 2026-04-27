@@ -116,26 +116,21 @@ func associationSortKey(a client.Association) string {
 // It ignores the key fields (account, cluster, partition, user) since those
 // are used for matching, not comparison.
 func associationsEqual(a, b client.Association) bool {
-	// Compare fairshare (shares_raw is a plain *int in the API)
 	if !intPtrEqual(a.SharesRaw, b.SharesRaw) {
 		return false
 	}
-
-	// Compare default QOS
+	if !slurmIntEqual(a.Priority, b.Priority) {
+		return false
+	}
 	if !associationDefaultsEqual(a.Default, b.Default) {
 		return false
 	}
-
-	// Compare QOS list
 	if !stringSlicesEqual(a.QOS, b.QOS) {
 		return false
 	}
-
-	// Compare max jobs
 	if !associationMaxEqual(a.Max, b.Max) {
 		return false
 	}
-
 	return true
 }
 
@@ -172,7 +167,7 @@ func associationDefaultsEqual(a, b *client.AssociationDefaults) bool {
 	return a.QOS == b.QOS
 }
 
-// associationMaxEqual compares two *AssociationMax values.
+// associationMaxEqual compares two *AssociationMax values across all fields.
 func associationMaxEqual(a, b *client.AssociationMax) bool {
 	if a == nil && b == nil {
 		return true
@@ -180,10 +175,11 @@ func associationMaxEqual(a, b *client.AssociationMax) bool {
 	if a == nil || b == nil {
 		return false
 	}
-	return associationMaxJobsEqual(a.Jobs, b.Jobs)
+	return associationMaxJobsEqual(a.Jobs, b.Jobs) &&
+		associationMaxTRESEqual(a.TRES, b.TRES) &&
+		associationMaxPerEqual(a.Per, b.Per)
 }
 
-// associationMaxJobsEqual compares two *AssociationMaxJobs values.
 func associationMaxJobsEqual(a, b *client.AssociationMaxJobs) bool {
 	if a == nil && b == nil {
 		return true
@@ -191,10 +187,12 @@ func associationMaxJobsEqual(a, b *client.AssociationMaxJobs) bool {
 	if a == nil || b == nil {
 		return false
 	}
-	return associationMaxJobsPerEqual(a.Per, b.Per)
+	return associationMaxJobsPerEqual(a.Per, b.Per) &&
+		slurmIntEqual(a.Active, b.Active) &&
+		slurmIntEqual(a.Accruing, b.Accruing) &&
+		slurmIntEqual(a.Total, b.Total)
 }
 
-// associationMaxJobsPerEqual compares two *AssociationMaxJobsPer values.
 func associationMaxJobsPerEqual(a, b *client.AssociationMaxJobsPer) bool {
 	if a == nil && b == nil {
 		return true
@@ -202,7 +200,93 @@ func associationMaxJobsPerEqual(a, b *client.AssociationMaxJobsPer) bool {
 	if a == nil || b == nil {
 		return false
 	}
-	return slurmIntEqual(a.Count, b.Count)
+	return slurmIntEqual(a.Count, b.Count) &&
+		slurmIntEqual(a.Accruing, b.Accruing) &&
+		slurmIntEqual(a.Submitted, b.Submitted) &&
+		slurmIntEqual(a.WallClock, b.WallClock)
+}
+
+func associationMaxTRESEqual(a, b *client.AssociationMaxTRES) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return tresSlicesEqual(a.Total, b.Total) &&
+		associationMaxTRESGroupEqual(a.Group, b.Group) &&
+		associationMaxTRESMinsEqual(a.Minutes, b.Minutes) &&
+		associationMaxTRESPerEqual(a.Per, b.Per)
+}
+
+func associationMaxTRESGroupEqual(a, b *client.AssociationMaxTRESGroup) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return tresSlicesEqual(a.Minutes, b.Minutes) && tresSlicesEqual(a.Active, b.Active)
+}
+
+func associationMaxTRESMinsEqual(a, b *client.AssociationMaxTRESMins) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	if a.Per == nil && b.Per == nil {
+		return true
+	}
+	if a.Per == nil || b.Per == nil {
+		return false
+	}
+	return tresSlicesEqual(a.Per.Job, b.Per.Job)
+}
+
+func associationMaxTRESPerEqual(a, b *client.AssociationMaxTRESPer) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return tresSlicesEqual(a.Job, b.Job) && tresSlicesEqual(a.Node, b.Node)
+}
+
+func associationMaxPerEqual(a, b *client.AssociationMaxPerNode) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	if a.Account == nil && b.Account == nil {
+		return true
+	}
+	if a.Account == nil || b.Account == nil {
+		return false
+	}
+	return slurmIntEqual(a.Account.WallClock, b.Account.WallClock)
+}
+
+// tresSlicesEqual compares two TRES slices order-insensitively by type+name.
+func tresSlicesEqual(a, b []client.TRES) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	key := func(t client.TRES) string { return t.Type + "/" + t.Name }
+	m := make(map[string]int64, len(a))
+	for _, t := range a {
+		m[key(t)] = t.Count
+	}
+	for _, t := range b {
+		if m[key(t)] != t.Count {
+			return false
+		}
+	}
+	return true
 }
 
 // stringSlicesEqual compares two string slices, ignoring order.

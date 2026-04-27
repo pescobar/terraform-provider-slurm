@@ -580,6 +580,7 @@ type User struct {
 // UserDefault contains the user's default settings.
 type UserDefault struct {
 	Account string `json:"account,omitempty"`
+	WCKey   string `json:"wckey,omitempty"`
 }
 
 // UserAssociationRequest is the body for POST /slurmdb/{version}/users_association/
@@ -678,28 +679,98 @@ type Association struct {
 	User      string               `json:"user"`
 	Default   *AssociationDefaults `json:"default,omitempty"`
 	SharesRaw *int                 `json:"shares_raw,omitempty"`
+	Priority  *SlurmInt            `json:"priority,omitempty"`
 	QOS       []string             `json:"qos,omitempty"`
 	Max       *AssociationMax      `json:"max,omitempty"`
 }
 
 // AssociationDefaults contains default settings for an association.
 type AssociationDefaults struct {
-	QOS string `json:"qos,omitempty"`
+	QOS   string `json:"qos,omitempty"`
+	WCKey string `json:"wckey,omitempty"`
 }
 
-// AssociationMax contains max limits for an association.
+// AssociationMax contains all limits for an association.
+// The Slurm REST API (v0.0.42) folds both per-user ("Max*") and per-group
+// ("Grp*") sacctmgr limits into this single "max" node.  There is no
+// separate top-level "grp" key.
+//
+// Mapping from sacctmgr names → JSON paths:
+//   MaxJobs        → max.jobs.active
+//   MaxJobsAccrue  → max.jobs.accruing
+//   MaxSubmitJobs  → max.jobs.total
+//   MaxWall        → max.jobs.per.wall_clock  (minutes)
+//   GrpJobs        → max.jobs.per.count
+//   GrpJobsAccrue  → max.jobs.per.accruing
+//   GrpSubmitJobs  → max.jobs.per.submitted
+//   GrpWall        → max.per.account.wall_clock  (minutes)
+//   MaxTRES        → max.tres.per.job
+//   MaxTRESPerNode → max.tres.per.node
+//   MaxTRESMins    → max.tres.minutes.per.job
+//   GrpTRES        → max.tres.total
+//   GrpTRESMins    → max.tres.group.minutes
+//   GrpTRESRunMins → max.tres.group.active
 type AssociationMax struct {
-	Jobs *AssociationMaxJobs `json:"jobs,omitempty"`
+	Jobs *AssociationMaxJobs    `json:"jobs,omitempty"`
+	TRES *AssociationMaxTRES    `json:"tres,omitempty"`
+	Per  *AssociationMaxPerNode `json:"per,omitempty"` // holds GrpWall
 }
 
-// AssociationMaxJobs contains the max jobs limits.
+// AssociationMaxJobs holds all job-count limits.
 type AssociationMaxJobs struct {
-	Per *AssociationMaxJobsPer `json:"per,omitempty"`
+	Per      *AssociationMaxJobsPer `json:"per,omitempty"`
+	Active   *SlurmInt              `json:"active,omitempty"`   // MaxJobs
+	Accruing *SlurmInt              `json:"accruing,omitempty"` // MaxJobsAccrue
+	Total    *SlurmInt              `json:"total,omitempty"`    // MaxSubmitJobs
 }
 
-// AssociationMaxJobsPer contains the per-entity max jobs.
+// AssociationMaxJobsPer holds the group-scoped job-count and wall-clock limits.
 type AssociationMaxJobsPer struct {
-	Count *SlurmInt `json:"count,omitempty"`
+	Count     *SlurmInt `json:"count,omitempty"`      // GrpJobs
+	Accruing  *SlurmInt `json:"accruing,omitempty"`   // GrpJobsAccrue
+	Submitted *SlurmInt `json:"submitted,omitempty"`  // GrpSubmitJobs
+	WallClock *SlurmInt `json:"wall_clock,omitempty"` // MaxWall (per job, minutes)
+}
+
+// AssociationMaxTRES holds all TRES limits (both Max* and Grp* variants).
+type AssociationMaxTRES struct {
+	Total   []TRES                    `json:"total,omitempty"`   // GrpTRES
+	Group   *AssociationMaxTRESGroup  `json:"group,omitempty"`   // GrpTRESMins / GrpTRESRunMins
+	Minutes *AssociationMaxTRESMins   `json:"minutes,omitempty"` // MaxTRESMins
+	Per     *AssociationMaxTRESPer    `json:"per,omitempty"`     // MaxTRES / MaxTRESPerNode
+}
+
+// AssociationMaxTRESGroup holds group-aggregate TRES-minute limits.
+type AssociationMaxTRESGroup struct {
+	Minutes []TRES `json:"minutes,omitempty"` // GrpTRESMins
+	Active  []TRES `json:"active,omitempty"`  // GrpTRESRunMins
+}
+
+// AssociationMaxTRESMins holds per-job TRES-minutes limits.
+type AssociationMaxTRESMins struct {
+	Total []TRES                     `json:"total,omitempty"`
+	Per   *AssociationMaxTRESMinsPer `json:"per,omitempty"`
+}
+
+// AssociationMaxTRESMinsPer holds the per-job breakdown of TRES-minutes.
+type AssociationMaxTRESMinsPer struct {
+	Job []TRES `json:"job,omitempty"` // MaxTRESMins per job
+}
+
+// AssociationMaxTRESPer holds per-job and per-node TRES limits.
+type AssociationMaxTRESPer struct {
+	Job  []TRES `json:"job,omitempty"`  // MaxTRES per job
+	Node []TRES `json:"node,omitempty"` // MaxTRESPerNode
+}
+
+// AssociationMaxPerNode is the "max.per" node; currently only carries GrpWall.
+type AssociationMaxPerNode struct {
+	Account *AssociationMaxPerAccount `json:"account,omitempty"`
+}
+
+// AssociationMaxPerAccount holds the per-account wall-clock limit (GrpWall).
+type AssociationMaxPerAccount struct {
+	WallClock *SlurmInt `json:"wall_clock,omitempty"` // GrpWall (minutes)
 }
 
 // GetAssociations returns all associations, optionally filtered by query params.

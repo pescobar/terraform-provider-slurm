@@ -164,6 +164,32 @@ func tresSchemaAttr(description string) schema.SetNestedAttribute {
 	}
 }
 
+// tresOptionalSchemaAttr is like tresSchemaAttr but without Computed or
+// UseStateForUnknown — used for association TRES limits where the server does
+// not inject defaults, so Optional-only suffices.
+func tresOptionalSchemaAttr(description string) schema.SetNestedAttribute {
+	return schema.SetNestedAttribute{
+		Description: description,
+		Optional:    true,
+		NestedObject: schema.NestedAttributeObject{
+			Attributes: map[string]schema.Attribute{
+				"type": schema.StringAttribute{
+					Required:    true,
+					Description: "TRES type (e.g. cpu, mem, gres).",
+				},
+				"name": schema.StringAttribute{
+					Optional:    true,
+					Description: "TRES name. Required for generic resources such as gres/gpu; omit for cpu and mem.",
+				},
+				"count": schema.Int64Attribute{
+					Required:    true,
+					Description: "TRES count limit.",
+				},
+			},
+		},
+	}
+}
+
 func NewQOSResource() resource.Resource {
 	return &qosResource{}
 }
