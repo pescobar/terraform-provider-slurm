@@ -8,6 +8,10 @@ Manages Slurm accounting resources — accounts, users, and QOS — via the
 persistent entities that `sacctmgr` handles; ephemeral objects like jobs and
 reservations are out of scope.
 
+> [!WARNING]
+> This is a toy project to test Claude Code. Use at your own risk.
+> I haven't tested it in a production cluster yet. If I ever test it in production I maybe remove this warning.
+
 ## Requirements
 
 | Component | Version |
