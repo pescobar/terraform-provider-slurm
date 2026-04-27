@@ -58,8 +58,7 @@ resource "slurm_qos" "qtest_preempt" {
 }
 
 # ============================================================================
-# qtest_tres_job — TRES limits per job (cpu + mem only; no gres since the
-# test cluster does not have GPUs configured in slurm.conf/gres.conf)
+# qtest_tres_job — TRES limits per job (cpu + mem + gpu)
 # ============================================================================
 
 resource "slurm_qos" "qtest_tres_job" {
@@ -70,6 +69,7 @@ resource "slurm_qos" "qtest_tres_job" {
   max_tres_per_job = [
     { type = "cpu", count = 64 },
     { type = "mem", count = 262144 }, # 256 GB in MB
+    { type = "gres", name = "gpu", count = 4 },
   ]
 }
 
@@ -85,6 +85,7 @@ resource "slurm_qos" "qtest_tres_grp" {
   grp_tres = [
     { type = "cpu", count = 256 },
     { type = "mem", count = 524288 }, # 512 GB in MB
+    { type = "gres", name = "gpu", count = 8 },
   ]
 
   grp_tres_mins = [

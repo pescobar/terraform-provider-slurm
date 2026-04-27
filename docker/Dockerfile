@@ -134,8 +134,9 @@ RUN set -e \
        fi \
     && cp /tmp/slurm-config/common/slurmdbd.conf /etc/slurm/slurmdbd.conf \
     && cp /tmp/slurm-config/common/cgroup.conf /etc/slurm/cgroup.conf \
-    && chown slurm:slurm /etc/slurm/slurm.conf /etc/slurm/slurmdbd.conf /etc/slurm/cgroup.conf \
-    && chmod 644 /etc/slurm/slurm.conf /etc/slurm/cgroup.conf \
+    && cp /tmp/slurm-config/common/gres.conf /etc/slurm/gres.conf \
+    && chown slurm:slurm /etc/slurm/slurm.conf /etc/slurm/slurmdbd.conf /etc/slurm/cgroup.conf /etc/slurm/gres.conf \
+    && chmod 644 /etc/slurm/slurm.conf /etc/slurm/cgroup.conf /etc/slurm/gres.conf \
     && chmod 600 /etc/slurm/slurmdbd.conf \
     && rm -rf /tmp/slurm-config
 
