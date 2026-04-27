@@ -290,7 +290,8 @@ func TestDiffAssociations_ValueToNil(t *testing.T) {
 	}
 }
 
-func TestDiffAssociations_MaxJobsChange(t *testing.T) {
+// Renamed: Per.Count is GrpJobs in v0.0.42 (MaxJobs lives at Jobs.Active).
+func TestDiffAssociations_GrpJobsChange(t *testing.T) {
 	old := []client.Association{
 		{
 			Account:   "physics",
@@ -299,9 +300,7 @@ func TestDiffAssociations_MaxJobsChange(t *testing.T) {
 			SharesRaw: intPtr(100),
 			Max: &client.AssociationMax{
 				Jobs: &client.AssociationMaxJobs{
-					Per: &client.AssociationMaxJobsPer{
-						Count: slurmInt(50),
-					},
+					Per: &client.AssociationMaxJobsPer{Count: slurmInt(50)},
 				},
 			},
 		},
@@ -314,18 +313,363 @@ func TestDiffAssociations_MaxJobsChange(t *testing.T) {
 			SharesRaw: intPtr(100),
 			Max: &client.AssociationMax{
 				Jobs: &client.AssociationMaxJobs{
-					Per: &client.AssociationMaxJobsPer{
-						Count: slurmInt(100),
-					},
+					Per: &client.AssociationMaxJobsPer{Count: slurmInt(100)},
 				},
 			},
 		},
 	}
-
 	diff := DiffAssociations(old, new)
-
 	if len(diff.Update) != 1 {
-		t.Fatalf("Expected 1 update for max_jobs change, got %d", len(diff.Update))
+		t.Fatalf("Expected 1 update for grp_jobs change, got %d", len(diff.Update))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// New-field diff tests (all fields added in the association limits expansion)
+// ---------------------------------------------------------------------------
+
+func base() client.Association {
+	return client.Association{Account: "acct", Cluster: "linux", User: "u"}
+}
+
+func TestDiffAssociations_MaxJobsChange(t *testing.T) {
+	o, n := base(), base()
+	o.Max = &client.AssociationMax{Jobs: &client.AssociationMaxJobs{Active: slurmInt(5)}}
+	n.Max = &client.AssociationMax{Jobs: &client.AssociationMaxJobs{Active: slurmInt(10)}}
+	diff := DiffAssociations([]client.Association{o}, []client.Association{n})
+	if len(diff.Update) != 1 {
+		t.Fatalf("Expected 1 update for max_jobs (Active) change, got %d", len(diff.Update))
+	}
+}
+
+func TestDiffAssociations_MaxJobsAccrueChange(t *testing.T) {
+	o, n := base(), base()
+	o.Max = &client.AssociationMax{Jobs: &client.AssociationMaxJobs{Accruing: slurmInt(10)}}
+	n.Max = &client.AssociationMax{Jobs: &client.AssociationMaxJobs{Accruing: slurmInt(20)}}
+	diff := DiffAssociations([]client.Association{o}, []client.Association{n})
+	if len(diff.Update) != 1 {
+		t.Fatalf("Expected 1 update for max_jobs_accrue change, got %d", len(diff.Update))
+	}
+}
+
+func TestDiffAssociations_MaxSubmitJobsChange(t *testing.T) {
+	o, n := base(), base()
+	o.Max = &client.AssociationMax{Jobs: &client.AssociationMaxJobs{Total: slurmInt(20)}}
+	n.Max = &client.AssociationMax{Jobs: &client.AssociationMaxJobs{Total: slurmInt(40)}}
+	diff := DiffAssociations([]client.Association{o}, []client.Association{n})
+	if len(diff.Update) != 1 {
+		t.Fatalf("Expected 1 update for max_submit_jobs change, got %d", len(diff.Update))
+	}
+}
+
+func TestDiffAssociations_MaxWallPJChange(t *testing.T) {
+	o, n := base(), base()
+	o.Max = &client.AssociationMax{Jobs: &client.AssociationMaxJobs{Per: &client.AssociationMaxJobsPer{WallClock: slurmInt(60)}}}
+	n.Max = &client.AssociationMax{Jobs: &client.AssociationMaxJobs{Per: &client.AssociationMaxJobsPer{WallClock: slurmInt(120)}}}
+	diff := DiffAssociations([]client.Association{o}, []client.Association{n})
+	if len(diff.Update) != 1 {
+		t.Fatalf("Expected 1 update for max_wall_pj change, got %d", len(diff.Update))
+	}
+}
+
+func TestDiffAssociations_GrpJobsAccrueChange(t *testing.T) {
+	o, n := base(), base()
+	o.Max = &client.AssociationMax{Jobs: &client.AssociationMaxJobs{Per: &client.AssociationMaxJobsPer{Accruing: slurmInt(200)}}}
+	n.Max = &client.AssociationMax{Jobs: &client.AssociationMaxJobs{Per: &client.AssociationMaxJobsPer{Accruing: slurmInt(400)}}}
+	diff := DiffAssociations([]client.Association{o}, []client.Association{n})
+	if len(diff.Update) != 1 {
+		t.Fatalf("Expected 1 update for grp_jobs_accrue change, got %d", len(diff.Update))
+	}
+}
+
+func TestDiffAssociations_GrpSubmitJobsChange(t *testing.T) {
+	o, n := base(), base()
+	o.Max = &client.AssociationMax{Jobs: &client.AssociationMaxJobs{Per: &client.AssociationMaxJobsPer{Submitted: slurmInt(400)}}}
+	n.Max = &client.AssociationMax{Jobs: &client.AssociationMaxJobs{Per: &client.AssociationMaxJobsPer{Submitted: slurmInt(800)}}}
+	diff := DiffAssociations([]client.Association{o}, []client.Association{n})
+	if len(diff.Update) != 1 {
+		t.Fatalf("Expected 1 update for grp_submit_jobs change, got %d", len(diff.Update))
+	}
+}
+
+func TestDiffAssociations_GrpWallChange(t *testing.T) {
+	o, n := base(), base()
+	o.Max = &client.AssociationMax{Per: &client.AssociationMaxPerNode{Account: &client.AssociationMaxPerAccount{WallClock: slurmInt(1440)}}}
+	n.Max = &client.AssociationMax{Per: &client.AssociationMaxPerNode{Account: &client.AssociationMaxPerAccount{WallClock: slurmInt(2880)}}}
+	diff := DiffAssociations([]client.Association{o}, []client.Association{n})
+	if len(diff.Update) != 1 {
+		t.Fatalf("Expected 1 update for grp_wall change, got %d", len(diff.Update))
+	}
+}
+
+func TestDiffAssociations_PriorityChange(t *testing.T) {
+	o, n := base(), base()
+	o.Priority = slurmInt(10)
+	n.Priority = slurmInt(20)
+	diff := DiffAssociations([]client.Association{o}, []client.Association{n})
+	if len(diff.Update) != 1 {
+		t.Fatalf("Expected 1 update for priority change, got %d", len(diff.Update))
+	}
+}
+
+func TestDiffAssociations_MaxTRESPerJobChange(t *testing.T) {
+	cpu8 := []client.TRES{{Type: "cpu", Count: 8}}
+	cpu16 := []client.TRES{{Type: "cpu", Count: 16}}
+	o, n := base(), base()
+	o.Max = &client.AssociationMax{TRES: &client.AssociationMaxTRES{Per: &client.AssociationMaxTRESPer{Job: cpu8}}}
+	n.Max = &client.AssociationMax{TRES: &client.AssociationMaxTRES{Per: &client.AssociationMaxTRESPer{Job: cpu16}}}
+	diff := DiffAssociations([]client.Association{o}, []client.Association{n})
+	if len(diff.Update) != 1 {
+		t.Fatalf("Expected 1 update for max_tres_per_job change, got %d", len(diff.Update))
+	}
+}
+
+func TestDiffAssociations_MaxTRESPerNodeChange(t *testing.T) {
+	cpu4 := []client.TRES{{Type: "cpu", Count: 4}}
+	cpu8 := []client.TRES{{Type: "cpu", Count: 8}}
+	o, n := base(), base()
+	o.Max = &client.AssociationMax{TRES: &client.AssociationMaxTRES{Per: &client.AssociationMaxTRESPer{Node: cpu4}}}
+	n.Max = &client.AssociationMax{TRES: &client.AssociationMaxTRES{Per: &client.AssociationMaxTRESPer{Node: cpu8}}}
+	diff := DiffAssociations([]client.Association{o}, []client.Association{n})
+	if len(diff.Update) != 1 {
+		t.Fatalf("Expected 1 update for max_tres_per_node change, got %d", len(diff.Update))
+	}
+}
+
+func TestDiffAssociations_MaxTRESMinsPerJobChange(t *testing.T) {
+	cpu480 := []client.TRES{{Type: "cpu", Count: 480}}
+	cpu960 := []client.TRES{{Type: "cpu", Count: 960}}
+	o, n := base(), base()
+	o.Max = &client.AssociationMax{TRES: &client.AssociationMaxTRES{
+		Minutes: &client.AssociationMaxTRESMins{Per: &client.AssociationMaxTRESMinsPer{Job: cpu480}},
+	}}
+	n.Max = &client.AssociationMax{TRES: &client.AssociationMaxTRES{
+		Minutes: &client.AssociationMaxTRESMins{Per: &client.AssociationMaxTRESMinsPer{Job: cpu960}},
+	}}
+	diff := DiffAssociations([]client.Association{o}, []client.Association{n})
+	if len(diff.Update) != 1 {
+		t.Fatalf("Expected 1 update for max_tres_mins_per_job change, got %d", len(diff.Update))
+	}
+}
+
+func TestDiffAssociations_GrpTRESChange(t *testing.T) {
+	cpu256 := []client.TRES{{Type: "cpu", Count: 256}}
+	cpu512 := []client.TRES{{Type: "cpu", Count: 512}}
+	o, n := base(), base()
+	o.Max = &client.AssociationMax{TRES: &client.AssociationMaxTRES{Total: cpu256}}
+	n.Max = &client.AssociationMax{TRES: &client.AssociationMaxTRES{Total: cpu512}}
+	diff := DiffAssociations([]client.Association{o}, []client.Association{n})
+	if len(diff.Update) != 1 {
+		t.Fatalf("Expected 1 update for grp_tres change, got %d", len(diff.Update))
+	}
+}
+
+func TestDiffAssociations_GrpTRESMinsChange(t *testing.T) {
+	cpu153600 := []client.TRES{{Type: "cpu", Count: 153600}}
+	cpu307200 := []client.TRES{{Type: "cpu", Count: 307200}}
+	o, n := base(), base()
+	o.Max = &client.AssociationMax{TRES: &client.AssociationMaxTRES{Group: &client.AssociationMaxTRESGroup{Minutes: cpu153600}}}
+	n.Max = &client.AssociationMax{TRES: &client.AssociationMaxTRES{Group: &client.AssociationMaxTRESGroup{Minutes: cpu307200}}}
+	diff := DiffAssociations([]client.Association{o}, []client.Association{n})
+	if len(diff.Update) != 1 {
+		t.Fatalf("Expected 1 update for grp_tres_mins change, got %d", len(diff.Update))
+	}
+}
+
+func TestDiffAssociations_GrpTRESRunMinsChange(t *testing.T) {
+	cpu76800 := []client.TRES{{Type: "cpu", Count: 76800}}
+	cpu153600 := []client.TRES{{Type: "cpu", Count: 153600}}
+	o, n := base(), base()
+	o.Max = &client.AssociationMax{TRES: &client.AssociationMaxTRES{Group: &client.AssociationMaxTRESGroup{Active: cpu76800}}}
+	n.Max = &client.AssociationMax{TRES: &client.AssociationMaxTRES{Group: &client.AssociationMaxTRESGroup{Active: cpu153600}}}
+	diff := DiffAssociations([]client.Association{o}, []client.Association{n})
+	if len(diff.Update) != 1 {
+		t.Fatalf("Expected 1 update for grp_tres_run_mins change, got %d", len(diff.Update))
+	}
+}
+
+func TestDiffAssociations_AllNewLimitsNoChange(t *testing.T) {
+	full := func() client.Association {
+		a := base()
+		a.Priority = slurmInt(10)
+		a.Max = &client.AssociationMax{
+			Jobs: &client.AssociationMaxJobs{
+				Per: &client.AssociationMaxJobsPer{
+					Count:     slurmInt(100),
+					Accruing:  slurmInt(200),
+					Submitted: slurmInt(400),
+					WallClock: slurmInt(60),
+				},
+				Active:   slurmInt(5),
+				Accruing: slurmInt(10),
+				Total:    slurmInt(20),
+			},
+			TRES: &client.AssociationMaxTRES{
+				Total: []client.TRES{{Type: "cpu", Count: 256}},
+				Group: &client.AssociationMaxTRESGroup{
+					Minutes: []client.TRES{{Type: "cpu", Count: 153600}},
+					Active:  []client.TRES{{Type: "cpu", Count: 76800}},
+				},
+				Minutes: &client.AssociationMaxTRESMins{
+					Per: &client.AssociationMaxTRESMinsPer{Job: []client.TRES{{Type: "cpu", Count: 480}}},
+				},
+				Per: &client.AssociationMaxTRESPer{
+					Job:  []client.TRES{{Type: "cpu", Count: 8}, {Type: "mem", Count: 16384}},
+					Node: []client.TRES{{Type: "cpu", Count: 4}},
+				},
+			},
+			Per: &client.AssociationMaxPerNode{
+				Account: &client.AssociationMaxPerAccount{WallClock: slurmInt(1440)},
+			},
+		}
+		return a
+	}
+	diff := DiffAssociations([]client.Association{full()}, []client.Association{full()})
+	if !diff.IsEmpty() {
+		t.Errorf("Expected no diff when all limits are identical, got: create=%d update=%d delete=%d",
+			len(diff.Create), len(diff.Update), len(diff.Delete))
+	}
+}
+
+func TestDiffAssociations_AllNewLimitsChanged(t *testing.T) {
+	o := base()
+	o.Priority = slurmInt(10)
+	o.Max = &client.AssociationMax{
+		Jobs: &client.AssociationMaxJobs{
+			Active:   slurmInt(5),
+			Accruing: slurmInt(10),
+			Total:    slurmInt(20),
+			Per: &client.AssociationMaxJobsPer{
+				Count:     slurmInt(100),
+				Accruing:  slurmInt(200),
+				Submitted: slurmInt(400),
+				WallClock: slurmInt(60),
+			},
+		},
+		TRES: &client.AssociationMaxTRES{
+			Total: []client.TRES{{Type: "cpu", Count: 256}},
+			Group: &client.AssociationMaxTRESGroup{
+				Minutes: []client.TRES{{Type: "cpu", Count: 153600}},
+				Active:  []client.TRES{{Type: "cpu", Count: 76800}},
+			},
+			Per:     &client.AssociationMaxTRESPer{Job: []client.TRES{{Type: "cpu", Count: 8}}},
+			Minutes: &client.AssociationMaxTRESMins{Per: &client.AssociationMaxTRESMinsPer{Job: []client.TRES{{Type: "cpu", Count: 480}}}},
+		},
+		Per: &client.AssociationMaxPerNode{Account: &client.AssociationMaxPerAccount{WallClock: slurmInt(1440)}},
+	}
+
+	n := base()
+	n.Priority = slurmInt(20) // changed
+	n.Max = &client.AssociationMax{
+		Jobs: &client.AssociationMaxJobs{
+			Active:   slurmInt(10),  // changed
+			Accruing: slurmInt(20),  // changed
+			Total:    slurmInt(40),  // changed
+			Per: &client.AssociationMaxJobsPer{
+				Count:     slurmInt(200),  // changed
+				Accruing:  slurmInt(400),  // changed
+				Submitted: slurmInt(800),  // changed
+				WallClock: slurmInt(120),  // changed
+			},
+		},
+		TRES: &client.AssociationMaxTRES{
+			Total: []client.TRES{{Type: "cpu", Count: 512}}, // changed
+			Group: &client.AssociationMaxTRESGroup{
+				Minutes: []client.TRES{{Type: "cpu", Count: 307200}}, // changed
+				Active:  []client.TRES{{Type: "cpu", Count: 153600}}, // changed
+			},
+			Per:     &client.AssociationMaxTRESPer{Job: []client.TRES{{Type: "cpu", Count: 16}}}, // changed
+			Minutes: &client.AssociationMaxTRESMins{Per: &client.AssociationMaxTRESMinsPer{Job: []client.TRES{{Type: "cpu", Count: 960}}}}, // changed
+		},
+		Per: &client.AssociationMaxPerNode{Account: &client.AssociationMaxPerAccount{WallClock: slurmInt(2880)}}, // changed
+	}
+
+	diff := DiffAssociations([]client.Association{o}, []client.Association{n})
+	if len(diff.Update) != 1 {
+		t.Fatalf("Expected 1 update when all limits change, got %d", len(diff.Update))
+	}
+	if len(diff.Create) != 0 || len(diff.Delete) != 0 {
+		t.Errorf("Expected no creates/deletes, got create=%d delete=%d", len(diff.Create), len(diff.Delete))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// tresSlicesEqual tests
+// ---------------------------------------------------------------------------
+
+func TestTresSlicesEqual(t *testing.T) {
+	tests := []struct {
+		name     string
+		a, b     []client.TRES
+		expected bool
+	}{
+		{
+			name:     "both nil",
+			expected: true,
+		},
+		{
+			name:     "both empty",
+			a:        []client.TRES{},
+			b:        []client.TRES{},
+			expected: true,
+		},
+		{
+			name:     "identical single",
+			a:        []client.TRES{{Type: "cpu", Count: 8}},
+			b:        []client.TRES{{Type: "cpu", Count: 8}},
+			expected: true,
+		},
+		{
+			name:     "different count",
+			a:        []client.TRES{{Type: "cpu", Count: 8}},
+			b:        []client.TRES{{Type: "cpu", Count: 16}},
+			expected: false,
+		},
+		{
+			name:     "different type",
+			a:        []client.TRES{{Type: "cpu", Count: 8}},
+			b:        []client.TRES{{Type: "mem", Count: 8}},
+			expected: false,
+		},
+		{
+			name:     "different length",
+			a:        []client.TRES{{Type: "cpu", Count: 8}},
+			b:        []client.TRES{{Type: "cpu", Count: 8}, {Type: "mem", Count: 1024}},
+			expected: false,
+		},
+		{
+			name: "order-insensitive multi",
+			a:    []client.TRES{{Type: "cpu", Count: 8}, {Type: "mem", Count: 1024}},
+			b:    []client.TRES{{Type: "mem", Count: 1024}, {Type: "cpu", Count: 8}},
+			expected: true,
+		},
+		{
+			name:     "gres/gpu same",
+			a:        []client.TRES{{Type: "gres", Name: "gpu", Count: 4}},
+			b:        []client.TRES{{Type: "gres", Name: "gpu", Count: 4}},
+			expected: true,
+		},
+		{
+			name:     "gres/gpu different count",
+			a:        []client.TRES{{Type: "gres", Name: "gpu", Count: 4}},
+			b:        []client.TRES{{Type: "gres", Name: "gpu", Count: 8}},
+			expected: false,
+		},
+		{
+			name:     "nil vs empty",
+			a:        nil,
+			b:        []client.TRES{},
+			expected: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tresSlicesEqual(tc.a, tc.b)
+			if got != tc.expected {
+				t.Errorf("tresSlicesEqual(%v, %v) = %v, want %v", tc.a, tc.b, got, tc.expected)
+			}
+		})
 	}
 }
 

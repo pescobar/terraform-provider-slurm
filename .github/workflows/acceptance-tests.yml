@@ -231,6 +231,58 @@ jobs:
 
           tofu destroy -auto-approve
 
+      - name: Run association limits acceptance tests (all new fields + import)
+        env:
+          TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
+          TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
+          TF_VAR_slurm_api_version: ${{ matrix.api_version }}
+        run: |
+          cd examples/assoc-limits-tests/
+
+          # --- Cycle 1: create, verify idempotency, destroy ---
+          tofu apply -auto-approve
+          tofu plan -detailed-exitcode
+          tofu destroy -auto-approve
+
+          # --- Cycle 2: create, then verify import ---
+          tofu apply -auto-approve
+          tofu plan -detailed-exitcode
+
+          # Remove every user resource from state to simulate a fresh import.
+          USERS="
+            slurm_user.uat_minimal
+            slurm_user.uat_job_counts
+            slurm_user.uat_wall
+            slurm_user.uat_max_tres
+            slurm_user.uat_grp_tres
+            slurm_user.uat_priority
+            slurm_user.uat_fairshare_priority
+            slurm_user.uat_all_limits
+            slurm_user.uat_multi_assoc
+          "
+          for res in $USERS; do
+            tofu state rm "$res"
+          done
+
+          # Re-import each user by name.
+          tofu import slurm_user.uat_minimal          uat_minimal
+          tofu import slurm_user.uat_job_counts       uat_job_counts
+          tofu import slurm_user.uat_wall             uat_wall
+          tofu import slurm_user.uat_max_tres         uat_max_tres
+          tofu import slurm_user.uat_grp_tres         uat_grp_tres
+          tofu import slurm_user.uat_priority         uat_priority
+          tofu import slurm_user.uat_fairshare_priority uat_fs_prio
+          tofu import slurm_user.uat_all_limits       uat_all_lim
+          tofu import slurm_user.uat_multi_assoc      uat_multi
+
+          # Reconciliation apply: inherited QOS values (returned by the API
+          # but not declared in config) are normalised here. After this apply
+          # the state must exactly match the config.
+          tofu apply -auto-approve
+          tofu plan -detailed-exitcode
+
+          tofu destroy -auto-approve
+
       - name: Collect Docker logs on failure
         if: failure()
         run: |

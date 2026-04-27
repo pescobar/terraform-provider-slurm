@@ -431,14 +431,10 @@ func (r *userResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		state.AdminLevel = types.StringValue("None")
 	}
 
-	// Default account and wc_key from API
-	if user.Default != nil {
-		if user.Default.Account != "" {
-			state.DefaultAccount = types.StringValue(user.Default.Account)
-		}
-		if user.Default.WCKey != "" && !state.DefaultWCKey.IsNull() {
-			state.DefaultWCKey = types.StringValue(user.Default.WCKey)
-		}
+	// Default account — the user endpoint always returns default.account="".
+	// We derive it from the association marked is_default instead.
+	if user.Default != nil && user.Default.WCKey != "" && !state.DefaultWCKey.IsNull() {
+		state.DefaultWCKey = types.StringValue(user.Default.WCKey)
 	}
 
 	// Read associations for this user
@@ -449,6 +445,16 @@ func (r *userResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading user associations", err.Error())
 		return
+	}
+
+	// Derive default_account from the association marked is_default.
+	// The user endpoint always returns default.account="" in Slurm REST API,
+	// so we use the is_default flag on associations as the authoritative source.
+	for _, a := range assocResp.Associations {
+		if a.User != "" && a.IsDefault {
+			state.DefaultAccount = types.StringValue(a.Account)
+			break
+		}
 	}
 
 	// Build a map of prior associations keyed by "account|partition".
@@ -918,9 +924,18 @@ func (r *userResource) apiAssociationsToState(ctx context.Context, assocs []clie
 			"grp_tres_run_mins": nullTRES,
 		}
 
-		// fairshare
-		if a.SharesRaw != nil && (!hasPrior || !prior.Fairshare.IsNull()) {
-			attrs["fairshare"] = types.Int64Value(int64(*a.SharesRaw))
+		// fairshare — Slurm always returns shares_raw=1 for users without an
+		// explicit setting (1 is the default). During import (no prior state)
+		// we skip that default to avoid drift against configs that omit fairshare.
+		// When prior state exists we follow the usual null-preservation rule.
+		if a.SharesRaw != nil {
+			if hasPrior {
+				if !prior.Fairshare.IsNull() {
+					attrs["fairshare"] = types.Int64Value(int64(*a.SharesRaw))
+				}
+			} else if *a.SharesRaw != 1 {
+				attrs["fairshare"] = types.Int64Value(int64(*a.SharesRaw))
+			}
 		}
 
 		// priority

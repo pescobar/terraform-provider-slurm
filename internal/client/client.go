@@ -677,6 +677,7 @@ type Association struct {
 	Cluster   string               `json:"cluster,omitempty"`
 	Partition string               `json:"partition,omitempty"`
 	User      string               `json:"user"`
+	IsDefault bool                 `json:"is_default,omitempty"`
 	Default   *AssociationDefaults `json:"default,omitempty"`
 	SharesRaw *int                 `json:"shares_raw,omitempty"`
 	Priority  *SlurmInt            `json:"priority,omitempty"`
