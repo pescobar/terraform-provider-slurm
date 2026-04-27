@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -214,12 +215,20 @@ func (r *qosResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Optional:    true,
 			},
 			"usage_factor": schema.Int64Attribute{
-				Description: "Factor applied to a job's usage when it runs under this QOS (UsageFactor). Default is 1.",
+				Description: "Factor applied to a job's usage when it runs under this QOS (UsageFactor). Slurm default is 1. Optional+Computed: omitting it from config keeps the current Slurm value.",
 				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"usage_threshold": schema.Int64Attribute{
-				Description: "Minimum usage factor a user must maintain to submit jobs under this QOS (UsageThres).",
+				Description: "Minimum usage factor a user must maintain to submit jobs under this QOS (UsageThres). Optional+Computed: omitting it keeps the current Slurm value.",
 				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"preempt_exempt_time": schema.Int64Attribute{
 				Description: "Minimum number of seconds a job must run before it can be preempted (PreemptExemptTime).",
@@ -327,6 +336,15 @@ func (r *qosResource) Create(ctx context.Context, req resource.CreateRequest, re
 	}
 
 	state := r.apiToState(ctx, created, &resp.Diagnostics)
+
+	// The Slurm REST API may not reflect TRES limits in the immediate GET
+	// response after a POST (it may require a second round-trip or the limits
+	// are stored asynchronously). For TRES fields the user explicitly configured,
+	// preserve the plan values so the framework's post-apply consistency check
+	// passes. The subsequent Read (next tofu plan / refresh) will validate
+	// whether Slurm actually stored the values.
+	r.preservePlanTRES(&state, plan)
+
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -556,6 +574,33 @@ func (r *qosResource) ImportState(ctx context.Context, req resource.ImportStateR
 }
 
 // modelToAPI converts the Terraform model to the Slurm API QOS struct.
+// preservePlanTRES copies non-null TRES set values from plan into state.
+// Called after Create so the framework's post-apply consistency check sees
+// the values the user configured rather than whatever the API read-back
+// happened to return (which may differ before Slurm's write is fully visible).
+func (r *qosResource) preservePlanTRES(state *qosResourceModel, plan qosResourceModel) {
+	type pair struct {
+		plan  types.Set
+		state *types.Set
+	}
+	for _, p := range []pair{
+		{plan.GrpTRES, &state.GrpTRES},
+		{plan.GrpTRESMins, &state.GrpTRESMins},
+		{plan.MaxTRESPerJob, &state.MaxTRESPerJob},
+		{plan.MaxTRESMinsPerJob, &state.MaxTRESMinsPerJob},
+		{plan.MaxTRESPerNode, &state.MaxTRESPerNode},
+		{plan.MaxTRESPerUser, &state.MaxTRESPerUser},
+		{plan.MaxTRESMinsPerUser, &state.MaxTRESMinsPerUser},
+		{plan.MaxTRESPerAccount, &state.MaxTRESPerAccount},
+		{plan.MaxTRESMinsPerAccount, &state.MaxTRESMinsPerAccount},
+		{plan.MinTRESPerJob, &state.MinTRESPerJob},
+	} {
+		if !p.plan.IsNull() && !p.plan.IsUnknown() {
+			*p.state = p.plan
+		}
+	}
+}
+
 func (r *qosResource) modelToAPI(ctx context.Context, m qosResourceModel) client.QOS {
 	qos := client.QOS{Name: m.Name.ValueString()}
 
