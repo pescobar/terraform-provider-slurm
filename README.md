@@ -181,17 +181,54 @@ TF_ACC=1 make testacc
 
 ### Test environment
 
-The acceptance tests and the example configs were developed against
-[`giovtorres/slurm-docker-cluster`](https://github.com/giovtorres/slurm-docker-cluster)
-running Slurm 25.05.4.
+A self-contained Docker Compose cluster is included in the `docker/` directory
+of this repository.  It runs MySQL, slurmdbd, slurmctld, slurmrestd, and a
+compute node with port 6820 (slurmrestd) exposed to the host.
 
 ```bash
-git clone https://github.com/giovtorres/slurm-docker-cluster.git
-cd slurm-docker-cluster
-docker compose up -d
+cd docker/
+SLURM_VERSION=25.05.4 docker compose up -d
 ```
 
-Port 6820 (slurmrestd) is exposed to the host.
+Wait for the cluster to be ready:
+
+```bash
+docker exec slurmctld scontrol ping
+```
+
+Generate a token (valid for 1 hour):
+
+```bash
+export TOKEN=$(docker exec slurmctld scontrol token lifespan=3600 \
+  | sed 's/SLURM_JWT=//')
+```
+
+Run any of the example configs manually:
+
+```bash
+# Basic resources
+cd examples/
+tofu apply  -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
+tofu destroy -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
+
+# Advanced resources
+cd examples/advanced-acceptance-tests/
+tofu apply  -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
+tofu destroy -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
+
+# User association combinations
+cd examples/user-association-tests/
+tofu apply  -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
+tofu destroy -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
+
+# Negative tests (expected to fail with a helpful error message)
+cd examples/user-association-tests/negative/
+tofu apply  -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
+tofu destroy -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
+```
+
+Each directory needs the provider binary in your `PATH` or a `dev_overrides`
+block in `~/.tofurc` — see [Build and install locally](#build-and-install-locally).
 
 ### Generate documentation
 
