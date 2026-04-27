@@ -30,9 +30,9 @@ type qosResourceModel struct {
 	Description types.String `tfsdk:"description"`
 	Priority    types.Int64  `tfsdk:"priority"`
 	MaxWallPJ   types.Int64  `tfsdk:"max_wall_pj"`
-	Flags       types.List   `tfsdk:"flags"`
-	PreemptList types.List   `tfsdk:"preempt_list"`
-	PreemptMode types.List   `tfsdk:"preempt_mode"`
+	Flags       types.Set    `tfsdk:"flags"`
+	PreemptList types.Set    `tfsdk:"preempt_list"`
+	PreemptMode types.Set    `tfsdk:"preempt_mode"`
 }
 
 func NewQOSResource() resource.Resource {
@@ -65,6 +65,9 @@ func (r *qosResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Description: "A description of the QOS.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"priority": schema.Int64Attribute{
 				Description: "The priority value for this QOS.",
@@ -74,17 +77,17 @@ func (r *qosResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Description: "Maximum wall clock time per job in minutes.",
 				Optional:    true,
 			},
-			"flags": schema.ListAttribute{
+			"flags": schema.SetAttribute{
 				Description: "QOS flags. Values must use the REST API name (UPPER_SNAKE_CASE), not the sacctmgr CamelCase names. Valid values: PARTITION_MINIMUM_NODE, PARTITION_MAXIMUM_NODE, PARTITION_TIME_LIMIT, ENFORCE_USAGE_THRESHOLD, NO_RESERVE, REQUIRED_RESERVATION, DENY_LIMIT, OVERRIDE_PARTITION_QOS, NO_DECAY, USAGE_FACTOR_SAFE, RELATIVE.",
 				Optional:    true,
 				ElementType: types.StringType,
 			},
-			"preempt_list": schema.ListAttribute{
-				Description: "List of QOS names that this QOS can preempt.",
+			"preempt_list": schema.SetAttribute{
+				Description: "Set of QOS names that this QOS can preempt.",
 				Optional:    true,
 				ElementType: types.StringType,
 			},
-			"preempt_mode": schema.ListAttribute{
+			"preempt_mode": schema.SetAttribute{
 				Description: "Preemption mode (e.g. CANCEL, REQUEUE).",
 				Optional:    true,
 				ElementType: types.StringType,
@@ -169,25 +172,37 @@ func (r *qosResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	state.Name = types.StringValue(qos.Name)
 	state.Description = types.StringValue(qos.Description)
 
-	if qos.Priority != nil && qos.Priority.Set {
+	// Only set priority when non-zero. Slurm returns {number:0, set:true} for
+	// QOS that have no priority configured, which would cause drift.
+	if qos.Priority != nil && qos.Priority.Set && qos.Priority.Number != 0 {
 		state.Priority = types.Int64Value(int64(qos.Priority.Number))
 	}
 	if qos.Limits != nil && qos.Limits.Max != nil && qos.Limits.Max.WallClock != nil && qos.Limits.Max.WallClock.Per != nil && qos.Limits.Max.WallClock.Per.Job != nil && qos.Limits.Max.WallClock.Per.Job.Set {
 		state.MaxWallPJ = types.Int64Value(int64(qos.Limits.Max.WallClock.Per.Job.Number))
 	}
+	// flags and preempt_list are Sets so element order from the API doesn't matter.
 	if len(qos.Flags) > 0 {
-		flagsVal, d := types.ListValueFrom(ctx, types.StringType, qos.Flags)
+		flagsVal, d := types.SetValueFrom(ctx, types.StringType, qos.Flags)
 		resp.Diagnostics.Append(d...)
 		state.Flags = flagsVal
 	}
 	if qos.Preempt != nil {
 		if len(qos.Preempt.List) > 0 {
-			preemptVal, d := types.ListValueFrom(ctx, types.StringType, qos.Preempt.List)
+			preemptVal, d := types.SetValueFrom(ctx, types.StringType, qos.Preempt.List)
 			resp.Diagnostics.Append(d...)
 			state.PreemptList = preemptVal
 		}
-		if len(qos.Preempt.Mode) > 0 {
-			modeVal, d := types.ListValueFrom(ctx, types.StringType, qos.Preempt.Mode)
+		// Filter "DISABLED" — Slurm returns ["DISABLED"] for QOS without a
+		// configured preempt_mode. Storing it would cause drift against configs
+		// that omit preempt_mode.
+		var modes []string
+		for _, m := range qos.Preempt.Mode {
+			if m != "DISABLED" {
+				modes = append(modes, m)
+			}
+		}
+		if len(modes) > 0 {
+			modeVal, d := types.SetValueFrom(ctx, types.StringType, modes)
 			resp.Diagnostics.Append(d...)
 			state.PreemptMode = modeVal
 		}
