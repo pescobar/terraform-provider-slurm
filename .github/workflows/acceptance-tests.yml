@@ -146,6 +146,31 @@ jobs:
           tofu plan -detailed-exitcode
           tofu destroy -auto-approve
 
+      - name: Run user-association negative tests (QOS constraint error messages)
+        env:
+          TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
+          TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
+          TF_VAR_slurm_api_version: ${{ matrix.api_version }}
+        run: |
+          cd examples/user-association-tests/negative/
+          set +e
+          output=$(tofu apply -auto-approve 2>&1)
+          exit_code=$?
+          set -e
+          echo "$output"
+          if [ "$exit_code" -eq 0 ]; then
+            echo "FAIL: expected tofu apply to fail but it succeeded"
+            tofu destroy -auto-approve
+            exit 1
+          fi
+          if ! echo "$output" | grep -qF "Slurm enforces two QOS access rules"; then
+            echo "FAIL: QOS constraint hint not found in error output"
+            tofu destroy -auto-approve
+            exit 1
+          fi
+          echo "PASS: error output contains expected QOS constraint hint"
+          tofu destroy -auto-approve
+
       - name: Collect Docker logs on failure
         if: failure()
         run: |
