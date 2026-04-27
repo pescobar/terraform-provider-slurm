@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -24,15 +27,140 @@ type qosResource struct {
 	client *client.Client
 }
 
+// tresModel is the in-state representation of a single TRES entry.
+type tresModel struct {
+	Type  types.String `tfsdk:"type"`
+	Name  types.String `tfsdk:"name"`
+	Count types.Int64  `tfsdk:"count"`
+}
+
 type qosResourceModel struct {
 	ID          types.String `tfsdk:"id"`
 	Name        types.String `tfsdk:"name"`
 	Description types.String `tfsdk:"description"`
 	Priority    types.Int64  `tfsdk:"priority"`
 	MaxWallPJ   types.Int64  `tfsdk:"max_wall_pj"`
+	GrpWall     types.Int64  `tfsdk:"grp_wall"`
 	Flags       types.Set    `tfsdk:"flags"`
 	PreemptList types.Set    `tfsdk:"preempt_list"`
 	PreemptMode types.Set    `tfsdk:"preempt_mode"`
+
+	// TRES limits (sacctmgr names in comments)
+	GrpTRES              types.Set `tfsdk:"grp_tres"`               // GrpTRES
+	GrpTRESMins          types.Set `tfsdk:"grp_tres_mins"`           // GrpTRESMins
+	MaxTRESPerJob        types.Set `tfsdk:"max_tres_per_job"`        // MaxTRES
+	MaxTRESMinsPerJob    types.Set `tfsdk:"max_tres_mins_per_job"`   // MaxTRESMins
+	MaxTRESPerNode       types.Set `tfsdk:"max_tres_per_node"`       // MaxTRESPerNode
+	MaxTRESPerUser       types.Set `tfsdk:"max_tres_per_user"`       // MaxTRESPU
+	MaxTRESMinsPerUser   types.Set `tfsdk:"max_tres_mins_per_user"`  // MaxTRESRunMinsPU
+	MaxTRESPerAccount    types.Set `tfsdk:"max_tres_per_account"`    // MaxTRESPA
+	MaxTRESMinsPerAccount types.Set `tfsdk:"max_tres_mins_per_account"` // MaxTRESRunMinsPA
+	MinTRESPerJob        types.Set `tfsdk:"min_tres_per_job"`        // MinTRES
+
+	// Job-count limits
+	GrpJobs               types.Int64 `tfsdk:"grp_jobs"`                 // GrpJobs
+	GrpSubmitJobs         types.Int64 `tfsdk:"grp_submit_jobs"`          // GrpSubmit
+	MaxJobsPerUser        types.Int64 `tfsdk:"max_jobs_per_user"`        // MaxJobsPU
+	MaxSubmitJobsPerUser  types.Int64 `tfsdk:"max_submit_jobs_per_user"` // MaxSubmitPU
+	MaxJobsPerAccount     types.Int64 `tfsdk:"max_jobs_per_account"`     // MaxJobsPA
+	MaxSubmitJobsPerAccount types.Int64 `tfsdk:"max_submit_jobs_per_account"` // MaxSubmitPA
+
+	// Miscellaneous
+	GraceTime          types.Int64 `tfsdk:"grace_time"`           // GraceTime (seconds)
+	UsageFactor        types.Int64 `tfsdk:"usage_factor"`         // UsageFactor
+	UsageThreshold     types.Int64 `tfsdk:"usage_threshold"`      // UsageThres
+	PreemptExemptTime  types.Int64 `tfsdk:"preempt_exempt_time"`  // PreemptExemptTime (seconds)
+}
+
+// tresAttrTypes returns the attribute type map for a TRES object element.
+func tresAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"type":  types.StringType,
+		"name":  types.StringType,
+		"count": types.Int64Type,
+	}
+}
+
+func tresElemType() attr.Type {
+	return types.ObjectType{AttrTypes: tresAttrTypes()}
+}
+
+// apiTresListToSet converts a []client.TRES returned by the API into a
+// types.Set for storing in state. An empty slice becomes types.SetNull so
+// Optional fields stay null when the QOS has no limit configured.
+func apiTresListToSet(ctx context.Context, list []client.TRES, diags *diag.Diagnostics) types.Set {
+	if len(list) == 0 {
+		return types.SetNull(tresElemType())
+	}
+	elems := make([]attr.Value, len(list))
+	for i, t := range list {
+		name := types.StringNull()
+		if t.Name != "" {
+			name = types.StringValue(t.Name)
+		}
+		obj, d := types.ObjectValue(tresAttrTypes(), map[string]attr.Value{
+			"type":  types.StringValue(t.Type),
+			"name":  name,
+			"count": types.Int64Value(t.Count),
+		})
+		diags.Append(d...)
+		elems[i] = obj
+	}
+	s, d := types.SetValue(tresElemType(), elems)
+	diags.Append(d...)
+	return s
+}
+
+// planTresListToAPI converts a types.Set from the plan into []client.TRES
+// for sending to the API. Returns nil when the set is null, unknown, or empty.
+func planTresListToAPI(ctx context.Context, s types.Set) []client.TRES {
+	if s.IsNull() || s.IsUnknown() || len(s.Elements()) == 0 {
+		return nil
+	}
+	var models []tresModel
+	s.ElementsAs(ctx, &models, false)
+	result := make([]client.TRES, len(models))
+	for i, m := range models {
+		name := ""
+		if !m.Name.IsNull() && !m.Name.IsUnknown() {
+			name = m.Name.ValueString()
+		}
+		result[i] = client.TRES{
+			Type:  m.Type.ValueString(),
+			Name:  name,
+			Count: m.Count.ValueInt64(),
+		}
+	}
+	return result
+}
+
+// tresSchemAttr builds the repeated SetNestedAttribute block for all TRES
+// limit attributes, keeping the schema definition DRY.
+func tresSchemaAttr(description string) schema.SetNestedAttribute {
+	return schema.SetNestedAttribute{
+		Description: description,
+		Optional:    true,
+		Computed:    true,
+		PlanModifiers: []planmodifier.Set{
+			setplanmodifier.UseStateForUnknown(),
+		},
+		NestedObject: schema.NestedAttributeObject{
+			Attributes: map[string]schema.Attribute{
+				"type": schema.StringAttribute{
+					Required:    true,
+					Description: "TRES type (e.g. cpu, mem, gres).",
+				},
+				"name": schema.StringAttribute{
+					Optional:    true,
+					Description: "TRES name. Required for generic resources such as gres/gpu; omit for cpu and mem.",
+				},
+				"count": schema.Int64Attribute{
+					Required:    true,
+					Description: "TRES count limit.",
+				},
+			},
+		},
+	}
 }
 
 func NewQOSResource() resource.Resource {
@@ -70,28 +198,85 @@ func (r *qosResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				},
 			},
 			"priority": schema.Int64Attribute{
-				Description: "The priority value for this QOS.",
+				Description: "Priority value for this QOS (Priority).",
 				Optional:    true,
 			},
 			"max_wall_pj": schema.Int64Attribute{
-				Description: "Maximum wall clock time per job in minutes.",
+				Description: "Maximum wall-clock time per job in minutes (MaxWall).",
 				Optional:    true,
 			},
+			"grp_wall": schema.Int64Attribute{
+				Description: "Maximum total wall-clock time in minutes that all jobs using this QOS can run simultaneously (GrpWall).",
+				Optional:    true,
+			},
+			"grace_time": schema.Int64Attribute{
+				Description: "Grace time in seconds before a job exceeding QOS limits is cancelled (GraceTime).",
+				Optional:    true,
+			},
+			"usage_factor": schema.Int64Attribute{
+				Description: "Factor applied to a job's usage when it runs under this QOS (UsageFactor). Default is 1.",
+				Optional:    true,
+			},
+			"usage_threshold": schema.Int64Attribute{
+				Description: "Minimum usage factor a user must maintain to submit jobs under this QOS (UsageThres).",
+				Optional:    true,
+			},
+			"preempt_exempt_time": schema.Int64Attribute{
+				Description: "Minimum number of seconds a job must run before it can be preempted (PreemptExemptTime).",
+				Optional:    true,
+			},
+			// Job-count limits
+			"grp_jobs": schema.Int64Attribute{
+				Description: "Maximum number of jobs running simultaneously across all users of this QOS (GrpJobs).",
+				Optional:    true,
+			},
+			"grp_submit_jobs": schema.Int64Attribute{
+				Description: "Maximum number of jobs that can be submitted at once across all users of this QOS (GrpSubmit).",
+				Optional:    true,
+			},
+			"max_jobs_per_user": schema.Int64Attribute{
+				Description: "Maximum number of jobs a single user can run simultaneously under this QOS (MaxJobsPU).",
+				Optional:    true,
+			},
+			"max_submit_jobs_per_user": schema.Int64Attribute{
+				Description: "Maximum number of jobs a single user can have submitted under this QOS (MaxSubmitPU).",
+				Optional:    true,
+			},
+			"max_jobs_per_account": schema.Int64Attribute{
+				Description: "Maximum number of jobs an account can run simultaneously under this QOS (MaxJobsPA).",
+				Optional:    true,
+			},
+			"max_submit_jobs_per_account": schema.Int64Attribute{
+				Description: "Maximum number of jobs an account can have submitted under this QOS (MaxSubmitPA).",
+				Optional:    true,
+			},
+			// Sets
 			"flags": schema.SetAttribute{
-				Description: "QOS flags. Values must use the REST API name (UPPER_SNAKE_CASE), not the sacctmgr CamelCase names. Valid values: PARTITION_MINIMUM_NODE, PARTITION_MAXIMUM_NODE, PARTITION_TIME_LIMIT, ENFORCE_USAGE_THRESHOLD, NO_RESERVE, REQUIRED_RESERVATION, DENY_LIMIT, OVERRIDE_PARTITION_QOS, NO_DECAY, USAGE_FACTOR_SAFE, RELATIVE.",
+				Description: "QOS flags. Values must use the REST API name (UPPER_SNAKE_CASE). Valid values: PARTITION_MINIMUM_NODE, PARTITION_MAXIMUM_NODE, PARTITION_TIME_LIMIT, ENFORCE_USAGE_THRESHOLD, NO_RESERVE, REQUIRED_RESERVATION, DENY_LIMIT, OVERRIDE_PARTITION_QOS, NO_DECAY, USAGE_FACTOR_SAFE, RELATIVE.",
 				Optional:    true,
 				ElementType: types.StringType,
 			},
 			"preempt_list": schema.SetAttribute{
-				Description: "Set of QOS names that this QOS can preempt.",
+				Description: "Set of QOS names that this QOS can preempt (Preempt).",
 				Optional:    true,
 				ElementType: types.StringType,
 			},
 			"preempt_mode": schema.SetAttribute{
-				Description: "Preemption mode (e.g. CANCEL, REQUEUE).",
+				Description: "Preemption mode (e.g. CANCEL, REQUEUE) (PreemptMode).",
 				Optional:    true,
 				ElementType: types.StringType,
 			},
+			// TRES limits
+			"grp_tres":               tresSchemaAttr("Maximum TRES usable by all jobs in this QOS at any time (GrpTRES)."),
+			"grp_tres_mins":          tresSchemaAttr("Maximum TRES-minutes consumable by all jobs in this QOS (GrpTRESMins)."),
+			"max_tres_per_job":       tresSchemaAttr("Maximum TRES a single job can request (MaxTRES)."),
+			"max_tres_mins_per_job":  tresSchemaAttr("Maximum TRES-minutes a single job can consume (MaxTRESMins)."),
+			"max_tres_per_node":      tresSchemaAttr("Maximum TRES a single job can use per node (MaxTRESPerNode)."),
+			"max_tres_per_user":      tresSchemaAttr("Maximum TRES a single user can use simultaneously (MaxTRESPU)."),
+			"max_tres_mins_per_user": tresSchemaAttr("Maximum TRES-minutes a single user can consume (MaxTRESRunMinsPU)."),
+			"max_tres_per_account":   tresSchemaAttr("Maximum TRES a single account can use simultaneously (MaxTRESPA)."),
+			"max_tres_mins_per_account": tresSchemaAttr("Maximum TRES-minutes a single account can consume (MaxTRESRunMinsPA)."),
+			"min_tres_per_job":       tresSchemaAttr("Minimum TRES a job must request to use this QOS (MinTRES)."),
 		},
 	}
 }
@@ -119,15 +304,9 @@ func (r *qosResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	tflog.Debug(ctx, "Creating QOS", map[string]interface{}{
-		"name": plan.Name.ValueString(),
-	})
+	tflog.Debug(ctx, "Creating QOS", map[string]interface{}{"name": plan.Name.ValueString()})
 
 	qos := r.modelToAPI(ctx, plan)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
 	if err := r.client.CreateQOS(qos); err != nil {
 		resp.Diagnostics.AddError("Error creating QOS", err.Error())
 		return
@@ -135,8 +314,7 @@ func (r *qosResource) Create(ctx context.Context, req resource.CreateRequest, re
 
 	plan.ID = plan.Name
 
-	// Read back so that Optional+Computed fields (description) reflect what
-	// Slurm actually stored rather than the plan value, which may be null.
+	// Read back so Computed fields (description) reflect what Slurm stored.
 	created, err := r.client.GetQOS(plan.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading QOS after create", err.Error())
@@ -172,29 +350,26 @@ func (r *qosResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	state.Name = types.StringValue(qos.Name)
 	state.Description = types.StringValue(qos.Description)
 
-	// Only set priority when non-zero. Slurm returns {number:0, set:true} for
-	// QOS that have no priority configured, which would cause drift.
+	// Priority: skip when zero (Slurm default) to avoid drift.
 	if qos.Priority != nil && qos.Priority.Set && qos.Priority.Number != 0 {
 		state.Priority = types.Int64Value(int64(qos.Priority.Number))
 	}
-	if qos.Limits != nil && qos.Limits.Max != nil && qos.Limits.Max.WallClock != nil && qos.Limits.Max.WallClock.Per != nil && qos.Limits.Max.WallClock.Per.Job != nil && qos.Limits.Max.WallClock.Per.Job.Set {
-		state.MaxWallPJ = types.Int64Value(int64(qos.Limits.Max.WallClock.Per.Job.Number))
+
+	// UsageFactor / UsageThreshold
+	if qos.UsageFactor != nil && qos.UsageFactor.Set && !qos.UsageFactor.Infinite {
+		state.UsageFactor = types.Int64Value(int64(qos.UsageFactor.Number))
 	}
-	// flags and preempt_list are Sets so element order from the API doesn't matter.
-	if len(qos.Flags) > 0 {
-		flagsVal, d := types.SetValueFrom(ctx, types.StringType, qos.Flags)
-		resp.Diagnostics.Append(d...)
-		state.Flags = flagsVal
+	if qos.UsageThreshold != nil && qos.UsageThreshold.Set && !qos.UsageThreshold.Infinite {
+		state.UsageThreshold = types.Int64Value(int64(qos.UsageThreshold.Number))
 	}
+
+	// Preempt
 	if qos.Preempt != nil {
 		if len(qos.Preempt.List) > 0 {
-			preemptVal, d := types.SetValueFrom(ctx, types.StringType, qos.Preempt.List)
+			v, d := types.SetValueFrom(ctx, types.StringType, qos.Preempt.List)
 			resp.Diagnostics.Append(d...)
-			state.PreemptList = preemptVal
+			state.PreemptList = v
 		}
-		// Filter "DISABLED" — Slurm returns ["DISABLED"] for QOS without a
-		// configured preempt_mode. Storing it would cause drift against configs
-		// that omit preempt_mode.
 		var modes []string
 		for _, m := range qos.Preempt.Mode {
 			if m != "DISABLED" {
@@ -202,9 +377,94 @@ func (r *qosResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 			}
 		}
 		if len(modes) > 0 {
-			modeVal, d := types.SetValueFrom(ctx, types.StringType, modes)
+			v, d := types.SetValueFrom(ctx, types.StringType, modes)
 			resp.Diagnostics.Append(d...)
-			state.PreemptMode = modeVal
+			state.PreemptMode = v
+		}
+		if qos.Preempt.ExemptTime != nil && qos.Preempt.ExemptTime.Set && !qos.Preempt.ExemptTime.Infinite {
+			state.PreemptExemptTime = types.Int64Value(int64(qos.Preempt.ExemptTime.Number))
+		}
+	}
+
+	// Flags
+	if len(qos.Flags) > 0 {
+		v, d := types.SetValueFrom(ctx, types.StringType, qos.Flags)
+		resp.Diagnostics.Append(d...)
+		state.Flags = v
+	}
+
+	// Limits
+	if qos.Limits != nil {
+		if qos.Limits.GraceTime != 0 {
+			state.GraceTime = types.Int64Value(int64(qos.Limits.GraceTime))
+		}
+
+		if qos.Limits.Max != nil {
+			max := qos.Limits.Max
+
+			// MaxWall (per-job wall clock)
+			if max.WallClock != nil && max.WallClock.Per != nil {
+				if max.WallClock.Per.Job != nil && max.WallClock.Per.Job.Set && !max.WallClock.Per.Job.Infinite {
+					state.MaxWallPJ = types.Int64Value(int64(max.WallClock.Per.Job.Number))
+				}
+				// GrpWall (per-QOS wall clock)
+				if max.WallClock.Per.QOS != nil && max.WallClock.Per.QOS.Set && !max.WallClock.Per.QOS.Infinite {
+					state.GrpWall = types.Int64Value(int64(max.WallClock.Per.QOS.Number))
+				}
+			}
+
+			// TRES limits
+			if max.TRES != nil {
+				t := max.TRES
+				state.GrpTRES = apiTresListToSet(ctx, t.Total, &resp.Diagnostics)
+				if t.Per != nil {
+					state.MaxTRESPerJob = apiTresListToSet(ctx, t.Per.Job, &resp.Diagnostics)
+					state.MaxTRESPerNode = apiTresListToSet(ctx, t.Per.Node, &resp.Diagnostics)
+					state.MaxTRESPerUser = apiTresListToSet(ctx, t.Per.User, &resp.Diagnostics)
+					state.MaxTRESPerAccount = apiTresListToSet(ctx, t.Per.Account, &resp.Diagnostics)
+				}
+				if t.Minutes != nil {
+					state.GrpTRESMins = apiTresListToSet(ctx, t.Minutes.Total, &resp.Diagnostics)
+					if t.Minutes.Per != nil {
+						state.MaxTRESMinsPerJob = apiTresListToSet(ctx, t.Minutes.Per.Job, &resp.Diagnostics)
+						state.MaxTRESMinsPerUser = apiTresListToSet(ctx, t.Minutes.Per.User, &resp.Diagnostics)
+						state.MaxTRESMinsPerAccount = apiTresListToSet(ctx, t.Minutes.Per.Account, &resp.Diagnostics)
+					}
+				}
+			}
+
+			// Job count limits
+			if max.Jobs != nil {
+				j := max.Jobs
+				if j.Count != nil && j.Count.Set && !j.Count.Infinite {
+					state.GrpJobs = types.Int64Value(int64(j.Count.Number))
+				}
+				if j.Per != nil {
+					if j.Per.User != nil && j.Per.User.Set && !j.Per.User.Infinite {
+						state.MaxJobsPerUser = types.Int64Value(int64(j.Per.User.Number))
+					}
+					if j.Per.Account != nil && j.Per.Account.Set && !j.Per.Account.Infinite {
+						state.MaxJobsPerAccount = types.Int64Value(int64(j.Per.Account.Number))
+					}
+				}
+				if j.ActiveJobs != nil && j.ActiveJobs.Per != nil {
+					if j.ActiveJobs.Per.User != nil && j.ActiveJobs.Per.User.Set && !j.ActiveJobs.Per.User.Infinite {
+						state.MaxSubmitJobsPerUser = types.Int64Value(int64(j.ActiveJobs.Per.User.Number))
+					}
+					if j.ActiveJobs.Per.Account != nil && j.ActiveJobs.Per.Account.Set && !j.ActiveJobs.Per.Account.Infinite {
+						state.MaxSubmitJobsPerAccount = types.Int64Value(int64(j.ActiveJobs.Per.Account.Number))
+					}
+				}
+			}
+			if max.ActiveJobs != nil && max.ActiveJobs.Count != nil &&
+				max.ActiveJobs.Count.Set && !max.ActiveJobs.Count.Infinite {
+				state.GrpSubmitJobs = types.Int64Value(int64(max.ActiveJobs.Count.Number))
+			}
+		}
+
+		// Min TRES
+		if qos.Limits.Min != nil && qos.Limits.Min.TRES != nil && qos.Limits.Min.TRES.Per != nil {
+			state.MinTRESPerJob = apiTresListToSet(ctx, qos.Limits.Min.TRES.Per.Job, &resp.Diagnostics)
 		}
 	}
 
@@ -220,23 +480,15 @@ func (r *qosResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	tflog.Debug(ctx, "Updating QOS", map[string]interface{}{
-		"name": plan.Name.ValueString(),
-	})
+	tflog.Debug(ctx, "Updating QOS", map[string]interface{}{"name": plan.Name.ValueString()})
 
 	qos := r.modelToAPI(ctx, plan)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	// Slurm uses POST for both create and update (upsert)
 	if err := r.client.CreateQOS(qos); err != nil {
 		resp.Diagnostics.AddError("Error updating QOS", err.Error())
 		return
 	}
 
 	plan.ID = plan.Name
-
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -249,9 +501,7 @@ func (r *qosResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		return
 	}
 
-	tflog.Debug(ctx, "Deleting QOS", map[string]interface{}{
-		"name": state.Name.ValueString(),
-	})
+	tflog.Debug(ctx, "Deleting QOS", map[string]interface{}{"name": state.Name.ValueString()})
 
 	if err := r.client.DeleteQOS(state.Name.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Error deleting QOS", err.Error())
@@ -265,51 +515,169 @@ func (r *qosResource) ImportState(ctx context.Context, req resource.ImportStateR
 }
 
 // modelToAPI converts the Terraform model to the Slurm API QOS struct.
-func (r *qosResource) modelToAPI(ctx context.Context, model qosResourceModel) client.QOS {
-	qos := client.QOS{
-		Name: model.Name.ValueString(),
+func (r *qosResource) modelToAPI(ctx context.Context, m qosResourceModel) client.QOS {
+	qos := client.QOS{Name: m.Name.ValueString()}
+
+	if !m.Description.IsNull() && !m.Description.IsUnknown() {
+		qos.Description = m.Description.ValueString()
 	}
-	if !model.Description.IsNull() && !model.Description.IsUnknown() {
-		qos.Description = model.Description.ValueString()
+	if !m.Priority.IsNull() && !m.Priority.IsUnknown() {
+		qos.Priority = &client.SlurmInt{Number: int(m.Priority.ValueInt64()), Set: true}
 	}
-	if !model.Priority.IsNull() && !model.Priority.IsUnknown() {
-		qos.Priority = &client.SlurmInt{
-			Number: int(model.Priority.ValueInt64()),
-			Set:    true,
-		}
+	if !m.UsageFactor.IsNull() && !m.UsageFactor.IsUnknown() {
+		qos.UsageFactor = &client.SlurmInt{Number: int(m.UsageFactor.ValueInt64()), Set: true}
 	}
-	if !model.MaxWallPJ.IsNull() && !model.MaxWallPJ.IsUnknown() {
-		qos.Limits = &client.QOSLimits{
-			Max: &client.QOSLimitsMax{
-				WallClock: &client.QOSWallClock{
-					Per: &client.QOSWallClockPer{
-						Job: &client.SlurmInt{
-							Number: int(model.MaxWallPJ.ValueInt64()),
-							Set:    true,
-						},
-					},
-				},
-			},
-		}
+	if !m.UsageThreshold.IsNull() && !m.UsageThreshold.IsUnknown() {
+		qos.UsageThreshold = &client.SlurmInt{Number: int(m.UsageThreshold.ValueInt64()), Set: true}
 	}
-	if !model.Flags.IsNull() && !model.Flags.IsUnknown() {
+
+	// Flags
+	if !m.Flags.IsNull() && !m.Flags.IsUnknown() {
 		var flags []string
-		model.Flags.ElementsAs(ctx, &flags, false)
+		m.Flags.ElementsAs(ctx, &flags, false)
 		qos.Flags = flags
 	}
 
-	if (!model.PreemptList.IsNull() && !model.PreemptList.IsUnknown()) ||
-		(!model.PreemptMode.IsNull() && !model.PreemptMode.IsUnknown()) {
+	// Preempt
+	if (!m.PreemptList.IsNull() && !m.PreemptList.IsUnknown()) ||
+		(!m.PreemptMode.IsNull() && !m.PreemptMode.IsUnknown()) ||
+		(!m.PreemptExemptTime.IsNull() && !m.PreemptExemptTime.IsUnknown()) {
 		qos.Preempt = &client.QOSPreempt{}
-		if !model.PreemptList.IsNull() && !model.PreemptList.IsUnknown() {
-			var list []string
-			model.PreemptList.ElementsAs(ctx, &list, false)
-			qos.Preempt.List = list
+		if !m.PreemptList.IsNull() && !m.PreemptList.IsUnknown() {
+			m.PreemptList.ElementsAs(ctx, &qos.Preempt.List, false)
 		}
-		if !model.PreemptMode.IsNull() && !model.PreemptMode.IsUnknown() {
-			var mode []string
-			model.PreemptMode.ElementsAs(ctx, &mode, false)
-			qos.Preempt.Mode = mode
+		if !m.PreemptMode.IsNull() && !m.PreemptMode.IsUnknown() {
+			m.PreemptMode.ElementsAs(ctx, &qos.Preempt.Mode, false)
+		}
+		if !m.PreemptExemptTime.IsNull() && !m.PreemptExemptTime.IsUnknown() {
+			qos.Preempt.ExemptTime = &client.SlurmInt{
+				Number: int(m.PreemptExemptTime.ValueInt64()),
+				Set:    true,
+			}
+		}
+	}
+
+	// Build limits only when at least one limit field is set.
+	needsLimits := !m.MaxWallPJ.IsNull() || !m.GrpWall.IsNull() || !m.GraceTime.IsNull() ||
+		!m.GrpJobs.IsNull() || !m.GrpSubmitJobs.IsNull() ||
+		!m.MaxJobsPerUser.IsNull() || !m.MaxSubmitJobsPerUser.IsNull() ||
+		!m.MaxJobsPerAccount.IsNull() || !m.MaxSubmitJobsPerAccount.IsNull() ||
+		!m.GrpTRES.IsNull() || !m.GrpTRESMins.IsNull() ||
+		!m.MaxTRESPerJob.IsNull() || !m.MaxTRESMinsPerJob.IsNull() ||
+		!m.MaxTRESPerNode.IsNull() ||
+		!m.MaxTRESPerUser.IsNull() || !m.MaxTRESMinsPerUser.IsNull() ||
+		!m.MaxTRESPerAccount.IsNull() || !m.MaxTRESMinsPerAccount.IsNull() ||
+		!m.MinTRESPerJob.IsNull()
+
+	if needsLimits {
+		qos.Limits = &client.QOSLimits{}
+
+		if !m.GraceTime.IsNull() && !m.GraceTime.IsUnknown() {
+			qos.Limits.GraceTime = int(m.GraceTime.ValueInt64())
+		}
+
+		needsMax := !m.MaxWallPJ.IsNull() || !m.GrpWall.IsNull() ||
+			!m.GrpJobs.IsNull() || !m.GrpSubmitJobs.IsNull() ||
+			!m.MaxJobsPerUser.IsNull() || !m.MaxSubmitJobsPerUser.IsNull() ||
+			!m.MaxJobsPerAccount.IsNull() || !m.MaxSubmitJobsPerAccount.IsNull() ||
+			!m.GrpTRES.IsNull() || !m.GrpTRESMins.IsNull() ||
+			!m.MaxTRESPerJob.IsNull() || !m.MaxTRESMinsPerJob.IsNull() ||
+			!m.MaxTRESPerNode.IsNull() ||
+			!m.MaxTRESPerUser.IsNull() || !m.MaxTRESMinsPerUser.IsNull() ||
+			!m.MaxTRESPerAccount.IsNull() || !m.MaxTRESMinsPerAccount.IsNull()
+
+		if needsMax {
+			qos.Limits.Max = &client.QOSLimitsMax{}
+			max := qos.Limits.Max
+
+			// Wall clock limits
+			needsWall := !m.MaxWallPJ.IsNull() || !m.GrpWall.IsNull()
+			if needsWall {
+				max.WallClock = &client.QOSWallClock{Per: &client.QOSWallClockPer{}}
+				if !m.MaxWallPJ.IsNull() && !m.MaxWallPJ.IsUnknown() {
+					max.WallClock.Per.Job = &client.SlurmInt{
+						Number: int(m.MaxWallPJ.ValueInt64()),
+						Set:    true,
+					}
+				}
+				if !m.GrpWall.IsNull() && !m.GrpWall.IsUnknown() {
+					max.WallClock.Per.QOS = &client.SlurmInt{
+						Number: int(m.GrpWall.ValueInt64()),
+						Set:    true,
+					}
+				}
+			}
+
+			// TRES limits
+			needsTRES := !m.GrpTRES.IsNull() || !m.GrpTRESMins.IsNull() ||
+				!m.MaxTRESPerJob.IsNull() || !m.MaxTRESMinsPerJob.IsNull() ||
+				!m.MaxTRESPerNode.IsNull() ||
+				!m.MaxTRESPerUser.IsNull() || !m.MaxTRESMinsPerUser.IsNull() ||
+				!m.MaxTRESPerAccount.IsNull() || !m.MaxTRESMinsPerAccount.IsNull()
+
+			if needsTRES {
+				max.TRES = &client.QOSTresLimits{}
+				max.TRES.Total = planTresListToAPI(ctx, m.GrpTRES)
+				max.TRES.Per = &client.QOSTresPer{
+					Job:     planTresListToAPI(ctx, m.MaxTRESPerJob),
+					Node:    planTresListToAPI(ctx, m.MaxTRESPerNode),
+					User:    planTresListToAPI(ctx, m.MaxTRESPerUser),
+					Account: planTresListToAPI(ctx, m.MaxTRESPerAccount),
+				}
+				max.TRES.Minutes = &client.QOSTresMins{
+					Total: planTresListToAPI(ctx, m.GrpTRESMins),
+					Per: &client.QOSTresMinsPer{
+						Job:     planTresListToAPI(ctx, m.MaxTRESMinsPerJob),
+						User:    planTresListToAPI(ctx, m.MaxTRESMinsPerUser),
+						Account: planTresListToAPI(ctx, m.MaxTRESMinsPerAccount),
+					},
+				}
+			}
+
+			// Job count limits
+			needsJobs := !m.GrpJobs.IsNull() || !m.MaxJobsPerUser.IsNull() ||
+				!m.MaxJobsPerAccount.IsNull() ||
+				!m.MaxSubmitJobsPerUser.IsNull() || !m.MaxSubmitJobsPerAccount.IsNull()
+			if needsJobs {
+				max.Jobs = &client.QOSJobs{}
+				if !m.GrpJobs.IsNull() && !m.GrpJobs.IsUnknown() {
+					max.Jobs.Count = &client.SlurmInt{Number: int(m.GrpJobs.ValueInt64()), Set: true}
+				}
+				if !m.MaxJobsPerUser.IsNull() || !m.MaxJobsPerAccount.IsNull() {
+					max.Jobs.Per = &client.QOSJobsPer{}
+					if !m.MaxJobsPerUser.IsNull() && !m.MaxJobsPerUser.IsUnknown() {
+						max.Jobs.Per.User = &client.SlurmInt{Number: int(m.MaxJobsPerUser.ValueInt64()), Set: true}
+					}
+					if !m.MaxJobsPerAccount.IsNull() && !m.MaxJobsPerAccount.IsUnknown() {
+						max.Jobs.Per.Account = &client.SlurmInt{Number: int(m.MaxJobsPerAccount.ValueInt64()), Set: true}
+					}
+				}
+				if !m.MaxSubmitJobsPerUser.IsNull() || !m.MaxSubmitJobsPerAccount.IsNull() {
+					max.Jobs.ActiveJobs = &client.QOSJobsActiveJobs{Per: &client.QOSJobsActiveJobsPer{}}
+					if !m.MaxSubmitJobsPerUser.IsNull() && !m.MaxSubmitJobsPerUser.IsUnknown() {
+						max.Jobs.ActiveJobs.Per.User = &client.SlurmInt{Number: int(m.MaxSubmitJobsPerUser.ValueInt64()), Set: true}
+					}
+					if !m.MaxSubmitJobsPerAccount.IsNull() && !m.MaxSubmitJobsPerAccount.IsUnknown() {
+						max.Jobs.ActiveJobs.Per.Account = &client.SlurmInt{Number: int(m.MaxSubmitJobsPerAccount.ValueInt64()), Set: true}
+					}
+				}
+			}
+			if !m.GrpSubmitJobs.IsNull() && !m.GrpSubmitJobs.IsUnknown() {
+				max.ActiveJobs = &client.QOSActiveJobs{
+					Count: &client.SlurmInt{Number: int(m.GrpSubmitJobs.ValueInt64()), Set: true},
+				}
+			}
+		}
+
+		// Min TRES
+		if !m.MinTRESPerJob.IsNull() {
+			qos.Limits.Min = &client.QOSLimitsMin{
+				TRES: &client.QOSMinTres{
+					Per: &client.QOSMinTresPer{
+						Job: planTresListToAPI(ctx, m.MinTRESPerJob),
+					},
+				},
+			}
 		}
 	}
 
