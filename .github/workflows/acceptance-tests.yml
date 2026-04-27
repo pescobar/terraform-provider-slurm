@@ -178,6 +178,59 @@ jobs:
           echo "PASS: both QOS constraint violations were correctly rejected"
           tofu destroy -auto-approve
 
+      - name: Run QOS acceptance tests (all attributes + import verification)
+        env:
+          TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
+          TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
+          TF_VAR_slurm_api_version: ${{ matrix.api_version }}
+        run: |
+          cd examples/qos-acceptance-tests/
+
+          # --- Cycle 1: create, verify idempotency, destroy ---
+          tofu apply -auto-approve
+          tofu plan -detailed-exitcode
+          tofu destroy -auto-approve
+
+          # --- Cycle 2: create, then verify import ---
+          tofu apply -auto-approve
+          tofu plan -detailed-exitcode
+
+          # Remove every QOS resource from state to simulate a fresh import.
+          RESOURCES="
+            slurm_qos.qtest_minimal
+            slurm_qos.qtest_wall
+            slurm_qos.qtest_preempt
+            slurm_qos.qtest_tres_job
+            slurm_qos.qtest_tres_grp
+            slurm_qos.qtest_tres_user
+            slurm_qos.qtest_tres_acct
+            slurm_qos.qtest_jobs
+            slurm_qos.qtest_misc
+            slurm_qos.qtest_tres_mins_job
+          "
+          for res in $RESOURCES; do
+            tofu state rm "$res"
+          done
+
+          # Re-import each QOS by name (resource_address = Slurm QOS name).
+          tofu import slurm_qos.qtest_minimal      qtest_minimal
+          tofu import slurm_qos.qtest_wall         qtest_wall
+          tofu import slurm_qos.qtest_preempt      qtest_preempt
+          tofu import slurm_qos.qtest_tres_job     qtest_tres_job
+          tofu import slurm_qos.qtest_tres_grp     qtest_tres_grp
+          tofu import slurm_qos.qtest_tres_user    qtest_tres_user
+          tofu import slurm_qos.qtest_tres_acct    qtest_tres_acct
+          tofu import slurm_qos.qtest_jobs         qtest_jobs
+          tofu import slurm_qos.qtest_misc         qtest_misc
+          tofu import slurm_qos.qtest_tres_mins_job qtest_tres_mins_job
+
+          # After import, plan must show no changes.
+          # A non-zero exit here means the imported state diverges from config
+          # — a drift bug in Read or modelToAPI.
+          tofu plan -detailed-exitcode
+
+          tofu destroy -auto-approve
+
       - name: Collect Docker logs on failure
         if: failure()
         run: |
