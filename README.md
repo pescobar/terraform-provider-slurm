@@ -1,3 +1,7 @@
+> [!WARNING]
+> This is a toy project to test Claude Code. Use at your own risk.
+> I haven't tested it in a production cluster yet. If I test it in production I maybe remove this warning.
+
 # Terraform / OpenTofu Provider for Slurm
 
 [![Unit Tests](https://github.com/pescobar/terraform-provider-slurm/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/pescobar/terraform-provider-slurm/actions/workflows/unit-tests.yml)
@@ -7,10 +11,6 @@ Manages Slurm accounting resources — accounts, users, and QOS — via the
 [slurmrestd](https://slurm.schedmd.com/rest.html) REST API.  Covers the same
 persistent entities that `sacctmgr` handles; ephemeral objects like jobs and
 reservations are out of scope.
-
-> [!WARNING]
-> This is a toy project to test Claude Code. Use at your own risk.
-> I haven't tested it in a production cluster yet. If I ever test it in production I maybe remove this warning.
 
 ## Requirements
 
