@@ -16,6 +16,7 @@ terraform-provider-slurm
 **/.terraform.lock.hcl
 *.tfstate
 *.tfstate.backup
+*.tfstate.*.backup
 *.tfplan
 crash.log
 override.tf
