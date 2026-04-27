@@ -110,8 +110,12 @@ jobs:
         run: |
           cd examples/
           tofu apply -auto-approve
+          # -detailed-exitcode: exits 0 = no changes, 1 = error, 2 = changes detected.
+          # Any non-zero exit fails the step and surfaces idempotency bugs.
+          tofu plan -detailed-exitcode
           tofu destroy -auto-approve
           tofu apply -auto-approve
+          tofu plan -detailed-exitcode
           tofu destroy -auto-approve
 
       - name: Run advanced acceptance tests
@@ -122,8 +126,10 @@ jobs:
         run: |
           cd examples/advanced-acceptance-tests/
           tofu apply -auto-approve
+          tofu plan -detailed-exitcode
           tofu destroy -auto-approve
           tofu apply -auto-approve
+          tofu plan -detailed-exitcode
           tofu destroy -auto-approve
 
       - name: Collect Docker logs on failure
