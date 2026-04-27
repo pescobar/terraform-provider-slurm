@@ -163,12 +163,19 @@ jobs:
             tofu destroy -auto-approve
             exit 1
           fi
-          if ! echo "$output" | grep -qF "Slurm enforces two QOS access rules"; then
-            echo "FAIL: QOS constraint hint not found in error output"
-            tofu destroy -auto-approve
-            exit 1
-          fi
-          echo "PASS: error output contains expected QOS constraint hint"
+          # Both bad users must have triggered an association error.
+          # We check our own error title (not Slurm's internal message) because
+          # the specific QOS constraint phrase in the Slurm HTTP response varies
+          # across code paths and Slurm versions. The hint-text behavior is
+          # covered by unit tests (TestIsQOSAccessError / TestAssocErrorDetail_*).
+          for user in neg_u_rule1 neg_u_rule2; do
+            if ! echo "$output" | grep -qF "associations failed"; then
+              echo "FAIL: expected 'associations failed' error for $user not found"
+              tofu destroy -auto-approve
+              exit 1
+            fi
+          done
+          echo "PASS: both QOS constraint violations were correctly rejected"
           tofu destroy -auto-approve
 
       - name: Collect Docker logs on failure

@@ -61,8 +61,15 @@ type APIError struct {
 func (e *APIError) Error() string {
 	if len(e.Errors) > 0 {
 		msg := fmt.Sprintf("slurm API error (HTTP %d):", e.StatusCode)
-		for _, err := range e.Errors {
-			msg += fmt.Sprintf(" %s", err.Description)
+		for _, slurmErr := range e.Errors {
+			msg += fmt.Sprintf(" %s", slurmErr.Description)
+			// Include the Error field when it adds detail beyond Description.
+			// Slurm sometimes puts the specific constraint message there
+			// (e.g. QOS access violations) while Description is a generic
+			// "slurmdb_X failed" string.
+			if slurmErr.Error != "" && slurmErr.Error != slurmErr.Description {
+				msg += fmt.Sprintf(" (%s)", slurmErr.Error)
+			}
 		}
 		return msg
 	}
