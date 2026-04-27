@@ -34,8 +34,8 @@ resource "slurm_qos" "gpu" {
 
   # Per-job TRES limits
   max_tres_per_job = [
-    { type = "cpu",  name = null, count = 128 },
-    { type = "mem",  name = null, count = 512000 }, # 500 GB in MB
+    { type = "cpu", count = 128 },
+    { type = "mem", count = 512000 }, # 500 GB in MB
     { type = "gres", name = "gpu", count = 8 },
   ]
 
@@ -72,13 +72,13 @@ resource "slurm_qos" "fairshare" {
   priority    = 150
 
   max_tres_per_user = [
-    { type = "cpu",  name = null, count = 256 },
+    { type = "cpu", count = 256 },
     { type = "gres", name = "gpu", count = 16 },
   ]
 
   max_tres_mins_per_user = [
-    { type = "cpu",  name = null, count = 2880000 }, # ~2000 CPU·h
-    { type = "gres", name = "gpu", count = 57600 },  # 40 GPU·h
+    { type = "cpu", count = 2880000 }, # ~2000 CPU·h
+    { type = "gres", name = "gpu", count = 57600 }, # 40 GPU·h
   ]
 
   max_tres_per_account = [
