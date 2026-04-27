@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 )
 
@@ -30,6 +31,11 @@ type Client struct {
 
 	// HTTPClient is the underlying HTTP client
 	HTTPClient *http.Client
+
+	// deleteMu serializes all delete operations. slurmdbd uses optimistic locking
+	// and returns MySQL error 1020 when concurrent deletes race on cross-row
+	// updates (e.g. QOS preempt references, account association cascades).
+	deleteMu sync.Mutex
 }
 
 // NewClient creates a new Slurm REST API client.
@@ -41,12 +47,6 @@ func NewClient(baseURL, token, cluster, apiVersion string) *Client {
 		APIVersion: apiVersion,
 		HTTPClient: &http.Client{
 			Timeout: 30 * time.Second,
-			Transport: &http.Transport{
-				// Disable keep-alives to avoid reusing stale connections.
-				// slurmrestd closes connections after a period of inactivity
-				// which causes EOF errors on subsequent requests.
-				DisableKeepAlives: true,
-			},
 		},
 	}
 }
@@ -99,7 +99,6 @@ func (c *Client) slurmdbPath(endpoint string) string {
 // It sets the JWT auth header and content type, then checks the response
 // for Slurm-level errors.
 func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error) {
-	var bodyReader io.Reader
 	var jsonBody []byte
 	if body != nil {
 		var err error
@@ -107,6 +106,10 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request body: %w", err)
 		}
+	}
+
+	var bodyReader io.Reader
+	if jsonBody != nil {
 		bodyReader = bytes.NewReader(jsonBody)
 	}
 
@@ -137,7 +140,6 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 			StatusCode: resp.StatusCode,
 			Body:       string(respBody),
 		}
-		// Try to parse Slurm errors from the response body
 		var base baseResponse
 		if json.Unmarshal(respBody, &base) == nil {
 			apiErr.Errors = base.Errors
@@ -232,6 +234,8 @@ func (c *Client) EnsureCluster() error {
 
 // DeleteCluster deletes a cluster by name.
 func (c *Client) DeleteCluster(name string) error {
+	c.deleteMu.Lock()
+	defer c.deleteMu.Unlock()
 	path := c.slurmdbPath(fmt.Sprintf("cluster/%s", url.PathEscape(name)))
 	_, err := c.doRequest(http.MethodDelete, path, nil)
 	return err
@@ -298,6 +302,8 @@ func (c *Client) CreateAccount(account Account) error {
 
 // DeleteAccount deletes an account by name.
 func (c *Client) DeleteAccount(name string) error {
+	c.deleteMu.Lock()
+	defer c.deleteMu.Unlock()
 	path := c.slurmdbPath(fmt.Sprintf("account/%s", url.PathEscape(name)))
 	_, err := c.doRequest(http.MethodDelete, path, nil)
 	return err
@@ -439,6 +445,8 @@ func (c *Client) CreateQOS(qos QOS) error {
 
 // DeleteQOS deletes a QOS by name.
 func (c *Client) DeleteQOS(name string) error {
+	c.deleteMu.Lock()
+	defer c.deleteMu.Unlock()
 	path := c.slurmdbPath(fmt.Sprintf("qos/%s", url.PathEscape(name)))
 	_, err := c.doRequest(http.MethodDelete, path, nil)
 	return err
@@ -534,6 +542,8 @@ func (c *Client) UpdateUser(user User) error {
 
 // DeleteUser deletes a user by name.
 func (c *Client) DeleteUser(name string) error {
+	c.deleteMu.Lock()
+	defer c.deleteMu.Unlock()
 	path := c.slurmdbPath(fmt.Sprintf("user/%s", url.PathEscape(name)))
 	_, err := c.doRequest(http.MethodDelete, path, nil)
 	return err
@@ -652,6 +662,8 @@ func (c *Client) CreateAssociations(associations []Association) error {
 
 // DeleteAssociation deletes a single association by its key fields.
 func (c *Client) DeleteAssociation(account, user, cluster, partition string) error {
+	c.deleteMu.Lock()
+	defer c.deleteMu.Unlock()
 	params := map[string]string{
 		"account": account,
 		"cluster": cluster,
