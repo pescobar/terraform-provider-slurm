@@ -1,6 +1,7 @@
 > [!WARNING]
-> This is a toy project to test Claude Code. Use at your own risk.
-> I haven't tested it in a production cluster yet. If I test it in production I maybe remove this warning.
+> This is a toy project to test Claude Code. 
+> I haven't tested it in a production cluster yet but based on
+> the acceptance tests it seems to work ;)
 
 # Terraform / OpenTofu Provider for Slurm
 
@@ -120,10 +121,11 @@ resource "slurm_qos" "priority" {
 }
 ```
 
-> **Note:** Do not manage Slurm's built-in `normal` QOS as a `slurm_qos`
-> resource.  Slurm creates it automatically at database init; deleting and
-> recreating it via the REST API triggers an internal Slurm bug that causes the
+> **Note:** Be careful if you plan to manage the built-in `normal` QOS as a `slurm_qos`
+> resource with this provider.  Slurm creates it automatically at database init; deleting and
+> recreating it via the REST API triggers an issue that causes the
 > second `apply` to fail with *"Slurmdbd query returned with empty list"*.
+> You can import it by you SHOULD NOT delete it using this provider
 
 ### `slurm_account`
 
@@ -188,6 +190,7 @@ tofu import slurm_user.alice       alice
 ### Build and install locally
 
 ```bash
+make build
 make install
 ```
 
