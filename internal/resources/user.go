@@ -88,6 +88,9 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Description: "Administrative level: None, Operator, or Administrator.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"default_account": schema.StringAttribute{
 				Description: "The user's default Slurm account. Must match one of the association accounts.",
@@ -108,7 +111,6 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 						"partition": schema.StringAttribute{
 							Description: "Optional partition to scope this association to.",
 							Optional:    true,
-							Computed:    true,
 						},
 						"fairshare": schema.Int64Attribute{
 							Description: "Fairshare value for this association.",
@@ -203,6 +205,9 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 		},
 		User: client.UserShort{},
 	}
+	if !plan.AdminLevel.IsNull() && !plan.AdminLevel.IsUnknown() {
+		userReq.User.AdminLevel = []string{plan.AdminLevel.ValueString()}
+	}
 
 	if err := r.client.CreateUserWithAssociation(userReq); err != nil {
 		resp.Diagnostics.AddError(
@@ -210,6 +215,25 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 			fmt.Sprintf("Could not create user '%s': %s", userName, err.Error()),
 		)
 		return
+	}
+
+	// The users_association endpoint ignores administrator_level even when sent.
+	// Apply it with a separate UpdateUser call when a non-default level is needed.
+	if !plan.AdminLevel.IsNull() && !plan.AdminLevel.IsUnknown() {
+		if al := plan.AdminLevel.ValueString(); al != "" && al != "None" {
+			u := client.User{
+				Name:       userName,
+				AdminLevel: []string{al},
+				Default:    &client.UserDefault{Account: defaultAccount},
+			}
+			if err := r.client.UpdateUser(u); err != nil {
+				resp.Diagnostics.AddError(
+					"Error setting admin level for new user",
+					fmt.Sprintf("User '%s' was created but admin_level could not be set: %s", userName, err.Error()),
+				)
+				return
+			}
+		}
 	}
 
 	// Step 2: Set limits on all associations via the associations endpoint (upsert).
@@ -224,52 +248,10 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	plan.ID = plan.Name
 
-	// Resolve Optional+Computed fields that are unknown when not set in config.
-	// The framework requires all values to be known after apply.
+	// admin_level is Optional+Computed; resolve to "None" on first apply when
+	// no prior state exists for UseStateForUnknown to draw from.
 	if plan.AdminLevel.IsUnknown() {
 		plan.AdminLevel = types.StringValue("None")
-	}
-
-	// Resolve unknown partition values within each association block.
-	// Partition is Optional+Computed; when omitted it is "" (no partition scoping).
-	if !plan.Associations.IsNull() && !plan.Associations.IsUnknown() {
-		var assocModels []associationModel
-		diags = plan.Associations.ElementsAs(ctx, &assocModels, false)
-		resp.Diagnostics.Append(diags...)
-		if !resp.Diagnostics.HasError() {
-			anyUnknown := false
-			for _, am := range assocModels {
-				if am.Partition.IsUnknown() {
-					anyUnknown = true
-					break
-				}
-			}
-			if anyUnknown {
-				for i := range assocModels {
-					if assocModels[i].Partition.IsUnknown() {
-						assocModels[i].Partition = types.StringValue("")
-					}
-				}
-				assocObjects := make([]attr.Value, len(assocModels))
-				for i, am := range assocModels {
-					obj, d := types.ObjectValue(associationModelType(), map[string]attr.Value{
-						"account":     am.Account,
-						"partition":   am.Partition,
-						"fairshare":   am.Fairshare,
-						"default_qos": am.DefaultQOS,
-						"max_jobs":    am.MaxJobsPU,
-						"qos":         am.QOS,
-					})
-					resp.Diagnostics.Append(d...)
-					assocObjects[i] = obj
-				}
-				plan.Associations, diags = types.SetValue(
-					types.ObjectType{AttrTypes: associationModelType()},
-					assocObjects,
-				)
-				resp.Diagnostics.Append(diags...)
-			}
-		}
 	}
 
 	diags = resp.State.Set(ctx, plan)
@@ -323,8 +305,22 @@ func (r *userResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
+	// Build a map of prior associations keyed by "account|partition".
+	// This is used in apiAssociationsToState to suppress Slurm-default and
+	// inherited values that were never explicitly set in the config.
+	priorAssocMap := make(map[string]associationModel)
+	if !state.Associations.IsNull() && !state.Associations.IsUnknown() {
+		var priorAssocs []associationModel
+		if d := state.Associations.ElementsAs(ctx, &priorAssocs, false); !d.HasError() {
+			for _, pa := range priorAssocs {
+				key := pa.Account.ValueString() + "|" + pa.Partition.ValueString()
+				priorAssocMap[key] = pa
+			}
+		}
+	}
+
 	// Convert API associations to Terraform state
-	assocObjects := r.apiAssociationsToState(ctx, assocResp.Associations, &resp.Diagnostics)
+	assocObjects := r.apiAssociationsToState(ctx, assocResp.Associations, priorAssocMap, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -576,7 +572,12 @@ func (r *userResource) extractAssociations(ctx context.Context, model userResour
 
 // apiAssociationsToState converts API association responses to Terraform
 // attr.Value objects suitable for setting in state.
-func (r *userResource) apiAssociationsToState(ctx context.Context, assocs []client.Association, diagnostics *diag.Diagnostics) []attr.Value {
+//
+// priorAssocMap (keyed by "account|partition") is used to suppress Slurm's
+// default and inherited values for Optional fields. If a field was null in
+// the prior state we keep it null even if the API returns a default value,
+// preventing spurious drift on every subsequent apply.
+func (r *userResource) apiAssociationsToState(ctx context.Context, assocs []client.Association, priorAssocMap map[string]associationModel, diagnostics *diag.Diagnostics) []attr.Value {
 	var result []attr.Value
 
 	for _, a := range assocs {
@@ -585,28 +586,48 @@ func (r *userResource) apiAssociationsToState(ctx context.Context, assocs []clie
 			continue
 		}
 
+		key := a.Account + "|" + a.Partition
+		prior, hasPrior := priorAssocMap[key]
+
+		// Partition: null when empty (partition is just Optional, not Computed).
+		var partitionVal attr.Value
+		if a.Partition != "" {
+			partitionVal = types.StringValue(a.Partition)
+		} else {
+			partitionVal = types.StringNull()
+		}
+
 		attrs := map[string]attr.Value{
 			"account":     types.StringValue(a.Account),
-			"partition":   types.StringValue(a.Partition),
+			"partition":   partitionVal,
 			"fairshare":   types.Int64Null(),
 			"default_qos": types.StringNull(),
 			"max_jobs":    types.Int64Null(),
 			"qos":         types.ListNull(types.StringType),
 		}
 
-		if a.SharesRaw != nil {
+		// For each Optional field: only include the API value if the prior state
+		// already had it set (non-null). This prevents Slurm's auto-set defaults
+		// (e.g. fairshare=1, inherited default_qos, inherited qos list) from
+		// appearing as drift on every apply after the resource is created.
+		// When hasPrior is false (import, or first read before any apply), we
+		// include all API values so imports capture the full server state.
+
+		if a.SharesRaw != nil && (!hasPrior || !prior.Fairshare.IsNull()) {
 			attrs["fairshare"] = types.Int64Value(int64(*a.SharesRaw))
 		}
 
-		if a.Default != nil && a.Default.QOS != "" {
+		if a.Default != nil && a.Default.QOS != "" && (!hasPrior || !prior.DefaultQOS.IsNull()) {
 			attrs["default_qos"] = types.StringValue(a.Default.QOS)
 		}
 
-		if a.Max != nil && a.Max.Jobs != nil && a.Max.Jobs.Per != nil && a.Max.Jobs.Per.Count != nil && a.Max.Jobs.Per.Count.Set {
+		if a.Max != nil && a.Max.Jobs != nil && a.Max.Jobs.Per != nil &&
+			a.Max.Jobs.Per.Count != nil && a.Max.Jobs.Per.Count.Set &&
+			(!hasPrior || !prior.MaxJobsPU.IsNull()) {
 			attrs["max_jobs"] = types.Int64Value(int64(a.Max.Jobs.Per.Count.Number))
 		}
 
-		if len(a.QOS) > 0 {
+		if len(a.QOS) > 0 && (!hasPrior || !prior.QOS.IsNull()) {
 			qosVal, diags := types.ListValueFrom(ctx, types.StringType, a.QOS)
 			diagnostics.Append(diags...)
 			attrs["qos"] = qosVal
