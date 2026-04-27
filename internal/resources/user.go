@@ -3,6 +3,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -56,6 +57,44 @@ func associationModelType() map[string]attr.Type {
 		"max_jobs":    types.Int64Type,
 		"qos":         types.ListType{ElemType: types.StringType},
 	}
+}
+
+// qosAccessHint is appended to association errors caused by Slurm's QOS
+// access constraints so users understand what went wrong and how to fix it.
+const qosAccessHint = `
+Slurm enforces two QOS access rules on user associations:
+
+  Rule 1 — qos list overrides account default_qos:
+    If you set 'qos' on an association, any 'default_qos' that the account
+    inherits is blocked for the user unless it also appears in that list.
+    Fix: add the account's default_qos value to the association's 'qos' list.
+
+  Rule 2 — default_qos requires direct allowed_qos on the account:
+    If you set 'default_qos' on an association without an explicit 'qos' list,
+    the QOS must be present in the account's own 'allowed_qos'. Slurm does NOT
+    follow the parent account hierarchy for this check.
+    Fix: add the QOS to the account's 'allowed_qos', or add an explicit 'qos'
+    list to the association that includes the 'default_qos' value.`
+
+// isQOSAccessError reports whether a Slurm API error is caused by a QOS
+// access constraint violation on an association.
+func isQOSAccessError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "would not have access to their default qos") ||
+		strings.Contains(msg, "don't have access to their default qos")
+}
+
+// assocErrorDetail builds the diagnostic detail string for an association
+// error, appending qosAccessHint when the root cause is a QOS constraint.
+// prefix is a plain string describing the operation (no format verbs needed).
+func assocErrorDetail(prefix string, err error) string {
+	if isQOSAccessError(err) {
+		return fmt.Sprintf("%s: %s%s", prefix, err.Error(), qosAccessHint)
+	}
+	return fmt.Sprintf("%s: %s", prefix, err.Error())
 }
 
 func NewUserResource() resource.Resource {
@@ -241,7 +280,7 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 	if err := r.client.CreateAssociations(assocs); err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating associations",
-			fmt.Sprintf("User '%s' was created but associations failed: %s", userName, err.Error()),
+			assocErrorDetail(fmt.Sprintf("User '%s' was created but associations failed", userName), err),
 		)
 		return
 	}
@@ -402,7 +441,7 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		if err := r.client.CreateAssociations(diff.Create); err != nil {
 			resp.Diagnostics.AddError(
 				"Error creating new associations",
-				fmt.Sprintf("Failed to create associations for user '%s': %s", userName, err.Error()),
+				assocErrorDetail(fmt.Sprintf("Failed to create associations for user '%s'", userName), err),
 			)
 			return
 		}
@@ -442,7 +481,7 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		if err := r.client.CreateAssociations(diff.Update); err != nil {
 			resp.Diagnostics.AddError(
 				"Error updating associations",
-				fmt.Sprintf("Failed to update associations for user '%s': %s", userName, err.Error()),
+				assocErrorDetail(fmt.Sprintf("Failed to update associations for user '%s'", userName), err),
 			)
 			return
 		}

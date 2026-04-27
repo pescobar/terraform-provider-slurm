@@ -157,13 +157,16 @@ resource "slurm_user" "max_jobs_only" {
   }
 }
 
-# qos list only (no default_qos, no fairshare)
+# qos list only (no default_qos, no fairshare).
+# Must use dept_b (no account-level default_qos) — using dept_a would fail
+# because dept_a's default_qos=medium is not in [low, high], violating
+# Slurm's rule that a user's effective default QOS must be in their qos list.
 resource "slurm_user" "qos_only" {
   name            = "u_qos"
-  default_account = slurm_account.dept_a.name
+  default_account = slurm_account.dept_b.name
 
   association {
-    account = slurm_account.dept_a.name
+    account = slurm_account.dept_b.name
     qos     = [slurm_qos.low.name, slurm_qos.high.name]
   }
 }
@@ -194,13 +197,16 @@ resource "slurm_user" "qos_pair" {
   }
 }
 
-# fairshare + default_qos
+# fairshare + default_qos.
+# Must use dept_a (has explicit allowed_qos=[low,medium,high]) — using a
+# child account like team_a1 would fail because Slurm only checks the
+# account's direct allowed_qos, not the inherited list from the parent.
 resource "slurm_user" "fairshare_dqos" {
   name            = "u_fs_dqos"
-  default_account = slurm_account.team_a1.name
+  default_account = slurm_account.dept_a.name
 
   association {
-    account     = slurm_account.team_a1.name
+    account     = slurm_account.dept_a.name
     fairshare   = 12
     default_qos = slurm_qos.low.name
   }
