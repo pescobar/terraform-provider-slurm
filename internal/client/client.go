@@ -374,8 +374,8 @@ type QOS struct {
 	Flags            []string    `json:"flags,omitempty"`
 	Limits           *QOSLimits  `json:"limits,omitempty"`
 	Preempt          *QOSPreempt `json:"preempt,omitempty"`
-	UsageFactor      *SlurmInt   `json:"usage_factor,omitempty"`
-	UsageThreshold   *SlurmInt   `json:"usage_threshold,omitempty"`
+	UsageFactor      *SlurmFloat `json:"usage_factor,omitempty"`
+	UsageThreshold   *SlurmFloat `json:"usage_threshold,omitempty"`
 }
 
 // SlurmInt represents Slurm's integer type which includes set/infinite flags.
@@ -385,6 +385,15 @@ type SlurmInt struct {
 	Number   int  `json:"number"`
 	Set      bool `json:"set"`
 	Infinite bool `json:"infinite,omitempty"`
+}
+
+// SlurmFloat is like SlurmInt but for API fields that Slurm serialises as a
+// JSON float (e.g. usage_factor returns 1.0, not 1). Using float64 avoids
+// "cannot unmarshal number 1.0 into Go struct field … of type int".
+type SlurmFloat struct {
+	Number   float64 `json:"number"`
+	Set      bool    `json:"set"`
+	Infinite bool    `json:"infinite,omitempty"`
 }
 
 // TRES represents a Trackable Resource (cpu, mem, gres, …) with a count limit.

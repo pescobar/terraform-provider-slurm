@@ -525,10 +525,10 @@ func (r *qosResource) modelToAPI(ctx context.Context, m qosResourceModel) client
 		qos.Priority = &client.SlurmInt{Number: int(m.Priority.ValueInt64()), Set: true}
 	}
 	if !m.UsageFactor.IsNull() && !m.UsageFactor.IsUnknown() {
-		qos.UsageFactor = &client.SlurmInt{Number: int(m.UsageFactor.ValueInt64()), Set: true}
+		qos.UsageFactor = &client.SlurmFloat{Number: float64(m.UsageFactor.ValueInt64()), Set: true}
 	}
 	if !m.UsageThreshold.IsNull() && !m.UsageThreshold.IsUnknown() {
-		qos.UsageThreshold = &client.SlurmInt{Number: int(m.UsageThreshold.ValueInt64()), Set: true}
+		qos.UsageThreshold = &client.SlurmFloat{Number: float64(m.UsageThreshold.ValueInt64()), Set: true}
 	}
 
 	// Flags
