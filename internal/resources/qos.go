@@ -312,31 +312,34 @@ func (r *qosResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	plan.ID = plan.Name
-
-	// Read back so Computed fields (description) reflect what Slurm stored.
+	// Read back the full QOS so every Optional+Computed field (including all
+	// TRES sets) is resolved to a known value. Saving the plan directly would
+	// leave those fields as Unknown, which the framework rejects.
 	created, err := r.client.GetQOS(plan.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading QOS after create", err.Error())
 		return
 	}
-	if created != nil {
-		plan.Description = types.StringValue(created.Description)
+	if created == nil {
+		resp.Diagnostics.AddError("QOS not found after create",
+			fmt.Sprintf("QOS %q was not found immediately after creation", plan.Name.ValueString()))
+		return
 	}
 
-	diags = resp.State.Set(ctx, plan)
+	state := r.apiToState(ctx, created, &resp.Diagnostics)
+	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
 
 func (r *qosResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var state qosResourceModel
-	diags := req.State.Get(ctx, &state)
+	var cur qosResourceModel
+	diags := req.State.Get(ctx, &cur)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	qos, err := r.client.GetQOS(state.Name.ValueString())
+	qos, err := r.client.GetQOS(cur.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading QOS", err.Error())
 		return
@@ -346,9 +349,49 @@ func (r *qosResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	state.ID = types.StringValue(qos.Name)
-	state.Name = types.StringValue(qos.Name)
-	state.Description = types.StringValue(qos.Description)
+	state := r.apiToState(ctx, qos, &resp.Diagnostics)
+	diags = resp.State.Set(ctx, state)
+	resp.Diagnostics.Append(diags...)
+}
+
+// apiToState builds a fully-resolved qosResourceModel from a Slurm API QOS
+// object. All Optional+Computed fields not present in the API response are set
+// to their null equivalents so the framework never sees an Unknown value.
+func (r *qosResource) apiToState(ctx context.Context, qos *client.QOS, diags *diag.Diagnostics) qosResourceModel {
+	state := qosResourceModel{
+		ID:          types.StringValue(qos.Name),
+		Name:        types.StringValue(qos.Name),
+		Description: types.StringValue(qos.Description),
+		// Scalar optionals — null unless populated below.
+		Priority:                types.Int64Null(),
+		UsageFactor:             types.Int64Null(),
+		UsageThreshold:          types.Int64Null(),
+		GraceTime:               types.Int64Null(),
+		MaxWallPJ:               types.Int64Null(),
+		GrpWall:                 types.Int64Null(),
+		PreemptExemptTime:       types.Int64Null(),
+		GrpJobs:                 types.Int64Null(),
+		GrpSubmitJobs:           types.Int64Null(),
+		MaxJobsPerUser:          types.Int64Null(),
+		MaxSubmitJobsPerUser:    types.Int64Null(),
+		MaxJobsPerAccount:       types.Int64Null(),
+		MaxSubmitJobsPerAccount: types.Int64Null(),
+		// String-set optionals.
+		Flags:       types.SetNull(types.StringType),
+		PreemptList: types.SetNull(types.StringType),
+		PreemptMode: types.SetNull(types.StringType),
+		// TRES-set optionals (Optional+Computed+UseStateForUnknown).
+		GrpTRES:               types.SetNull(tresElemType()),
+		GrpTRESMins:           types.SetNull(tresElemType()),
+		MaxTRESPerJob:         types.SetNull(tresElemType()),
+		MaxTRESMinsPerJob:     types.SetNull(tresElemType()),
+		MaxTRESPerNode:        types.SetNull(tresElemType()),
+		MaxTRESPerUser:        types.SetNull(tresElemType()),
+		MaxTRESMinsPerUser:    types.SetNull(tresElemType()),
+		MaxTRESPerAccount:     types.SetNull(tresElemType()),
+		MaxTRESMinsPerAccount: types.SetNull(tresElemType()),
+		MinTRESPerJob:         types.SetNull(tresElemType()),
+	}
 
 	// Priority: skip when zero (Slurm default) to avoid drift.
 	if qos.Priority != nil && qos.Priority.Set && qos.Priority.Number != 0 {
@@ -367,7 +410,7 @@ func (r *qosResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	if qos.Preempt != nil {
 		if len(qos.Preempt.List) > 0 {
 			v, d := types.SetValueFrom(ctx, types.StringType, qos.Preempt.List)
-			resp.Diagnostics.Append(d...)
+			diags.Append(d...)
 			state.PreemptList = v
 		}
 		var modes []string
@@ -378,7 +421,7 @@ func (r *qosResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		}
 		if len(modes) > 0 {
 			v, d := types.SetValueFrom(ctx, types.StringType, modes)
-			resp.Diagnostics.Append(d...)
+			diags.Append(d...)
 			state.PreemptMode = v
 		}
 		if qos.Preempt.ExemptTime != nil && qos.Preempt.ExemptTime.Set && !qos.Preempt.ExemptTime.Infinite {
@@ -389,7 +432,7 @@ func (r *qosResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 	// Flags
 	if len(qos.Flags) > 0 {
 		v, d := types.SetValueFrom(ctx, types.StringType, qos.Flags)
-		resp.Diagnostics.Append(d...)
+		diags.Append(d...)
 		state.Flags = v
 	}
 
@@ -402,12 +445,11 @@ func (r *qosResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		if qos.Limits.Max != nil {
 			max := qos.Limits.Max
 
-			// MaxWall (per-job wall clock)
+			// Wall-clock limits
 			if max.WallClock != nil && max.WallClock.Per != nil {
 				if max.WallClock.Per.Job != nil && max.WallClock.Per.Job.Set && !max.WallClock.Per.Job.Infinite {
 					state.MaxWallPJ = types.Int64Value(int64(max.WallClock.Per.Job.Number))
 				}
-				// GrpWall (per-QOS wall clock)
 				if max.WallClock.Per.QOS != nil && max.WallClock.Per.QOS.Set && !max.WallClock.Per.QOS.Infinite {
 					state.GrpWall = types.Int64Value(int64(max.WallClock.Per.QOS.Number))
 				}
@@ -416,19 +458,19 @@ func (r *qosResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 			// TRES limits
 			if max.TRES != nil {
 				t := max.TRES
-				state.GrpTRES = apiTresListToSet(ctx, t.Total, &resp.Diagnostics)
+				state.GrpTRES = apiTresListToSet(ctx, t.Total, diags)
 				if t.Per != nil {
-					state.MaxTRESPerJob = apiTresListToSet(ctx, t.Per.Job, &resp.Diagnostics)
-					state.MaxTRESPerNode = apiTresListToSet(ctx, t.Per.Node, &resp.Diagnostics)
-					state.MaxTRESPerUser = apiTresListToSet(ctx, t.Per.User, &resp.Diagnostics)
-					state.MaxTRESPerAccount = apiTresListToSet(ctx, t.Per.Account, &resp.Diagnostics)
+					state.MaxTRESPerJob = apiTresListToSet(ctx, t.Per.Job, diags)
+					state.MaxTRESPerNode = apiTresListToSet(ctx, t.Per.Node, diags)
+					state.MaxTRESPerUser = apiTresListToSet(ctx, t.Per.User, diags)
+					state.MaxTRESPerAccount = apiTresListToSet(ctx, t.Per.Account, diags)
 				}
 				if t.Minutes != nil {
-					state.GrpTRESMins = apiTresListToSet(ctx, t.Minutes.Total, &resp.Diagnostics)
+					state.GrpTRESMins = apiTresListToSet(ctx, t.Minutes.Total, diags)
 					if t.Minutes.Per != nil {
-						state.MaxTRESMinsPerJob = apiTresListToSet(ctx, t.Minutes.Per.Job, &resp.Diagnostics)
-						state.MaxTRESMinsPerUser = apiTresListToSet(ctx, t.Minutes.Per.User, &resp.Diagnostics)
-						state.MaxTRESMinsPerAccount = apiTresListToSet(ctx, t.Minutes.Per.Account, &resp.Diagnostics)
+						state.MaxTRESMinsPerJob = apiTresListToSet(ctx, t.Minutes.Per.Job, diags)
+						state.MaxTRESMinsPerUser = apiTresListToSet(ctx, t.Minutes.Per.User, diags)
+						state.MaxTRESMinsPerAccount = apiTresListToSet(ctx, t.Minutes.Per.Account, diags)
 					}
 				}
 			}
@@ -464,12 +506,11 @@ func (r *qosResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 
 		// Min TRES
 		if qos.Limits.Min != nil && qos.Limits.Min.TRES != nil && qos.Limits.Min.TRES.Per != nil {
-			state.MinTRESPerJob = apiTresListToSet(ctx, qos.Limits.Min.TRES.Per.Job, &resp.Diagnostics)
+			state.MinTRESPerJob = apiTresListToSet(ctx, qos.Limits.Min.TRES.Per.Job, diags)
 		}
 	}
 
-	diags = resp.State.Set(ctx, state)
-	resp.Diagnostics.Append(diags...)
+	return state
 }
 
 func (r *qosResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
