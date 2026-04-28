@@ -601,7 +601,13 @@ def generate_users(users: list, assocs: list) -> tuple:
         if admin and admin.lower() not in ("none", ""):
             attrs.append(("admin_level", _q(admin)))
 
-        default_acct = (u.get("default") or {}).get("account") or ""
+        # The Slurm REST API always returns default.account="" on the user
+        # object (same bug the provider works around in its Read function).
+        # Derive default_account from the association that has is_default=true.
+        default_acct = next(
+            (a.get("account", "") for a in user_assocs[name] if a.get("is_default")),
+            "",
+        )
         if default_acct:
             attrs.append(("default_account", _q(default_acct)))
 
