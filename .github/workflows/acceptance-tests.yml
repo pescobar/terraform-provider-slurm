@@ -109,11 +109,28 @@ jobs:
           TF_VAR_slurm_api_version: ${{ matrix.api_version }}
         run: |
           cd examples/
+
+          # --- Cycle 1: create, verify idempotency, destroy ---
           tofu apply -auto-approve
           # -detailed-exitcode: exits 0 = no changes, 1 = error, 2 = changes detected.
           # Any non-zero exit fails the step and surfaces idempotency bugs.
           tofu plan -detailed-exitcode
           tofu destroy -auto-approve
+
+          # --- Cycle 2: create, then verify import ---
+          tofu apply -auto-approve
+          tofu plan -detailed-exitcode
+
+          tofu state rm slurm_qos.standard
+          tofu state rm slurm_qos.priority
+          tofu state rm slurm_account.physics
+          tofu state rm slurm_user.bob
+
+          tofu import slurm_qos.standard    standard
+          tofu import slurm_qos.priority    priority
+          tofu import slurm_account.physics physics
+          tofu import slurm_user.bob        bob
+
           tofu apply -auto-approve
           tofu plan -detailed-exitcode
           tofu destroy -auto-approve
@@ -125,9 +142,46 @@ jobs:
           TF_VAR_slurm_api_version: ${{ matrix.api_version }}
         run: |
           cd examples/advanced-acceptance-tests/
+
+          # --- Cycle 1: create, verify idempotency, destroy ---
           tofu apply -auto-approve
           tofu plan -detailed-exitcode
           tofu destroy -auto-approve
+
+          # --- Cycle 2: create, then verify import ---
+          tofu apply -auto-approve
+          tofu plan -detailed-exitcode
+
+          tofu state rm slurm_qos.basic
+          tofu state rm slurm_qos.standard
+          tofu state rm slurm_qos.priority
+          tofu state rm slurm_qos.express
+          tofu state rm slurm_qos.debug
+          tofu state rm slurm_account.minimal
+          tofu state rm slurm_account.physics
+          tofu state rm slurm_account.chemistry
+          tofu state rm slurm_account.physics_hep
+          tofu state rm slurm_account.physics_astro
+          tofu state rm slurm_user.alice
+          tofu state rm slurm_user.bob
+          tofu state rm slurm_user.carol
+          tofu state rm slurm_user.dave
+
+          tofu import slurm_qos.basic           basic
+          tofu import slurm_qos.standard        standard
+          tofu import slurm_qos.priority        priority
+          tofu import slurm_qos.express         express
+          tofu import slurm_qos.debug           debug
+          tofu import slurm_account.minimal     minimal
+          tofu import slurm_account.physics     physics
+          tofu import slurm_account.chemistry   chemistry
+          tofu import slurm_account.physics_hep physics_hep
+          tofu import slurm_account.physics_astro physics_astro
+          tofu import slurm_user.alice          alice
+          tofu import slurm_user.bob            bob
+          tofu import slurm_user.carol          carol
+          tofu import slurm_user.dave           dave
+
           tofu apply -auto-approve
           tofu plan -detailed-exitcode
           tofu destroy -auto-approve
@@ -139,9 +193,74 @@ jobs:
           TF_VAR_slurm_api_version: ${{ matrix.api_version }}
         run: |
           cd examples/user-association-tests/
+
+          # --- Cycle 1: create, verify idempotency, destroy ---
           tofu apply -auto-approve
           tofu plan -detailed-exitcode
           tofu destroy -auto-approve
+
+          # --- Cycle 2: create, then verify import ---
+          tofu apply -auto-approve
+          tofu plan -detailed-exitcode
+
+          tofu state rm slurm_qos.low
+          tofu state rm slurm_qos.medium
+          tofu state rm slurm_qos.high
+          tofu state rm slurm_qos.debug
+          tofu state rm slurm_qos.long
+          tofu state rm slurm_account.dept_a
+          tofu state rm slurm_account.dept_b
+          tofu state rm slurm_account.team_a1
+          tofu state rm slurm_account.team_a2
+          tofu state rm slurm_account.team_b1
+          tofu state rm slurm_user.minimal
+          tofu state rm slurm_user.fairshare_only
+          tofu state rm slurm_user.default_qos_only
+          tofu state rm slurm_user.max_jobs_only
+          tofu state rm slurm_user.qos_only
+          tofu state rm slurm_user.fairshare_maxjobs
+          tofu state rm slurm_user.qos_pair
+          tofu state rm slurm_user.fairshare_dqos
+          tofu state rm slurm_user.maxjobs_qos
+          tofu state rm slurm_user.all_fields
+          tofu state rm slurm_user.operator
+          tofu state rm slurm_user.explicit_none
+          tofu state rm slurm_user.two_accounts
+          tofu state rm slurm_user.full_and_minimal
+          tofu state rm slurm_user.three_accounts
+          tofu state rm slurm_user.parent_child
+          tofu state rm slurm_user.full_limits_multi
+          tofu state rm slurm_user.operator_multi
+
+          tofu import slurm_qos.low           assoc_low
+          tofu import slurm_qos.medium        assoc_medium
+          tofu import slurm_qos.high          assoc_high
+          tofu import slurm_qos.debug         assoc_debug
+          tofu import slurm_qos.long          assoc_long
+          tofu import slurm_account.dept_a    dept_a
+          tofu import slurm_account.dept_b    dept_b
+          tofu import slurm_account.team_a1   team_a1
+          tofu import slurm_account.team_a2   team_a2
+          tofu import slurm_account.team_b1   team_b1
+          tofu import slurm_user.minimal           u_minimal
+          tofu import slurm_user.fairshare_only    u_fairshare
+          tofu import slurm_user.default_qos_only  u_dqos
+          tofu import slurm_user.max_jobs_only     u_maxjobs
+          tofu import slurm_user.qos_only          u_qos
+          tofu import slurm_user.fairshare_maxjobs u_fs_mj
+          tofu import slurm_user.qos_pair          u_qos_pair
+          tofu import slurm_user.fairshare_dqos    u_fs_dqos
+          tofu import slurm_user.maxjobs_qos       u_mj_qos
+          tofu import slurm_user.all_fields        u_all
+          tofu import slurm_user.operator          u_operator
+          tofu import slurm_user.explicit_none     u_none
+          tofu import slurm_user.two_accounts      u_two
+          tofu import slurm_user.full_and_minimal  u_full_min
+          tofu import slurm_user.three_accounts    u_three
+          tofu import slurm_user.parent_child      u_hier
+          tofu import slurm_user.full_limits_multi u_full_multi
+          tofu import slurm_user.operator_multi    u_op_multi
+
           tofu apply -auto-approve
           tofu plan -detailed-exitcode
           tofu destroy -auto-approve
