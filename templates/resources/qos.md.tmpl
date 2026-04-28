@@ -1,0 +1,45 @@
+---
+page_title: "slurm_qos Resource - slurm"
+subcategory: ""
+description: |-
+  Manages a Slurm Quality of Service (QOS) definition.
+---
+
+# slurm_qos (Resource)
+
+Manages a Slurm Quality of Service (QOS) definition.
+
+## Example Usage
+
+{{ tffile "examples/resources/slurm_qos/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+> **Bulk import tip:** [`tools/generate_import/generate_import.py`](https://github.com/pescobar/terraform-provider-slurm/blob/master/tools/generate_import/generate_import.py)
+> queries a running `slurmrestd` instance and generates ready-to-use HCL files plus
+> `import {}` blocks for all QOS, accounts, and users in one shot. See its
+> [README](https://github.com/pescobar/terraform-provider-slurm/blob/master/tools/generate_import/README.md)
+> for usage.
+
+Import a QOS by its Slurm name:
+
+```bash
+tofu import slurm_qos.standard standard
+```
+
+`slurm_qos` uses **Optional+Computed** fields, so after import the provider reads
+all values from Slurm and state is immediately correct — no reconcile apply is
+needed.
+
+### Warning: built-in `normal` QOS
+
+Slurm auto-creates a QOS named `normal` at database initialisation. You can manage
+its attributes via this provider, but you **must not** run `tofu destroy` on it —
+deleting it via the REST API corrupts slurmdbd. To stop managing it without
+deleting it:
+
+```bash
+tofu state rm slurm_qos.normal
+```
