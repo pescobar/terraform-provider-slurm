@@ -40,3 +40,6 @@ dist/
 
 # Docker
 docker/.env
+
+# tools
+tools/generate_import/generated
