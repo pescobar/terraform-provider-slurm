@@ -143,8 +143,6 @@ re-running.
   script once per cluster and merging the output.
 - **`fairshare = 1` is silently omitted.** See the accounts and users
   sections above.
-- **TRES limits on accounts** are not yet exposed by the `slurm_account`
-  provider resource, so they are not generated.
 - **Partition-scoped associations** are supported: if a user has an
   association scoped to a specific partition, the `partition` field is
   included in the `association {}` block.

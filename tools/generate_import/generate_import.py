@@ -417,6 +417,30 @@ def _account_attrs(acc: dict, assoc: Optional[dict], label_map: dict,
         if v := sint((assoc.get("max") or {}).get("jobs", {}).get("active")):
             attrs.append(("max_jobs", str(v)))
 
+        # TRES limits on the account-level association
+        # max.tres.per.job         → max_tres_per_job
+        # max.tres.per.node        → max_tres_per_node
+        # max.tres.minutes.per.job → max_tres_mins_per_job
+        # max.tres.total           → grp_tres
+        # max.tres.group.minutes   → grp_tres_mins
+        # max.tres.group.active    → grp_tres_run_mins
+        mx        = assoc.get("max") or {}
+        tres      = mx.get("tres") or {}
+        tres_per  = tres.get("per") or {}
+        tres_mins = tres.get("minutes") or {}
+        tres_grp  = tres.get("group") or {}
+
+        for attr, raw in (
+            ("max_tres_per_job",    tres_per.get("job")),
+            ("max_tres_per_node",   tres_per.get("node")),
+            ("max_tres_mins_per_job", (tres_mins.get("per") or {}).get("job")),
+            ("grp_tres",            tres.get("total")),
+            ("grp_tres_mins",       tres_grp.get("minutes")),
+            ("grp_tres_run_mins",   tres_grp.get("active")),
+        ):
+            if entries := _norm_tres(raw):
+                attrs.append((attr, _tres_list(entries)))
+
     # depends_on — make child accounts wait for their parent to be created first.
     if parent and parent not in SYSTEM_ACCOUNTS and parent in label_map:
         attrs.append((f"depends_on = [slurm_account.{label_map[parent]}]", None))

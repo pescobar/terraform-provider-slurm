@@ -121,6 +121,56 @@ resource "slurm_account" "physics_astro" {
   allowed_qos    = [slurm_qos.debug.name]
 }
 
+# Account with a subset of TRES limits
+resource "slurm_account" "tres_partial" {
+  name        = "tres_partial"
+  description = "Account with per-job and group TRES limits"
+
+  max_tres_per_job = [
+    { type = "cpu", count = 32 },
+    { type = "mem", count = 65536 }, # 64 GB in MB
+  ]
+
+  grp_tres = [
+    { type = "cpu", count = 256 },
+  ]
+
+  grp_tres_mins = [
+    { type = "cpu", count = 153600 }, # ~106 CPU·h
+  ]
+}
+
+# Account with all six TRES limit fields
+resource "slurm_account" "tres_all" {
+  name        = "tres_all"
+  description = "Account with all TRES limit fields set"
+
+  max_tres_per_job = [
+    { type = "cpu", count = 8 },
+    { type = "mem", count = 16384 }, # 16 GB in MB
+  ]
+
+  max_tres_per_node = [
+    { type = "cpu", count = 4 },
+  ]
+
+  max_tres_mins_per_job = [
+    { type = "cpu", count = 480 }, # 8 CPU·h
+  ]
+
+  grp_tres = [
+    { type = "cpu", count = 64 },
+  ]
+
+  grp_tres_mins = [
+    { type = "cpu", count = 38400 }, # ~26 CPU·h
+  ]
+
+  grp_tres_run_mins = [
+    { type = "cpu", count = 19200 }, # ~13 CPU·h running
+  ]
+}
+
 # ============================================================================
 # Users
 # Exercises: name, admin_level (None/Operator), default_account, and

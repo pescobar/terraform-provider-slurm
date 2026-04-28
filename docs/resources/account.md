@@ -44,13 +44,96 @@ resource "slurm_account" "hep" {
 - `default_qos` (String) Default QOS for this account's association.
 - `description` (String) A description of the account.
 - `fairshare` (Number) Fairshare value for this account's association.
+- `grp_tres` (Attributes Set) Maximum TRES in use at once across this account's group (GrpTRES). (see [below for nested schema](#nestedatt--grp_tres))
+- `grp_tres_mins` (Attributes Set) Maximum TRES-minutes for this account's group (GrpTRESMins). (see [below for nested schema](#nestedatt--grp_tres_mins))
+- `grp_tres_run_mins` (Attributes Set) Maximum TRES-minutes of currently running jobs for this account's group (GrpTRESRunMins). (see [below for nested schema](#nestedatt--grp_tres_run_mins))
 - `max_jobs` (Number) Maximum number of running jobs for this account's association (inherited by users unless overridden).
+- `max_tres_mins_per_job` (Attributes Set) Maximum TRES-minutes per job for this account's association (MaxTRESMins). (see [below for nested schema](#nestedatt--max_tres_mins_per_job))
+- `max_tres_per_job` (Attributes Set) Maximum TRES per job for this account's association (MaxTRES). (see [below for nested schema](#nestedatt--max_tres_per_job))
+- `max_tres_per_node` (Attributes Set) Maximum TRES per node per job for this account's association (MaxTRESPerNode). (see [below for nested schema](#nestedatt--max_tres_per_node))
 - `organization` (String) The organization this account belongs to.
 - `parent_account` (String) The parent account name. Defaults to 'root'.
 
 ### Read-Only
 
 - `id` (String) The account name (same as name).
+
+<a id="nestedatt--grp_tres"></a>
+### Nested Schema for `grp_tres`
+
+Required:
+
+- `count` (Number) TRES count limit.
+- `type` (String) TRES type (e.g. cpu, mem, gres).
+
+Optional:
+
+- `name` (String) TRES name. Required for generic resources such as gres/gpu; omit for cpu and mem.
+
+
+<a id="nestedatt--grp_tres_mins"></a>
+### Nested Schema for `grp_tres_mins`
+
+Required:
+
+- `count` (Number) TRES count limit.
+- `type` (String) TRES type (e.g. cpu, mem, gres).
+
+Optional:
+
+- `name` (String) TRES name. Required for generic resources such as gres/gpu; omit for cpu and mem.
+
+
+<a id="nestedatt--grp_tres_run_mins"></a>
+### Nested Schema for `grp_tres_run_mins`
+
+Required:
+
+- `count` (Number) TRES count limit.
+- `type` (String) TRES type (e.g. cpu, mem, gres).
+
+Optional:
+
+- `name` (String) TRES name. Required for generic resources such as gres/gpu; omit for cpu and mem.
+
+
+<a id="nestedatt--max_tres_mins_per_job"></a>
+### Nested Schema for `max_tres_mins_per_job`
+
+Required:
+
+- `count` (Number) TRES count limit.
+- `type` (String) TRES type (e.g. cpu, mem, gres).
+
+Optional:
+
+- `name` (String) TRES name. Required for generic resources such as gres/gpu; omit for cpu and mem.
+
+
+<a id="nestedatt--max_tres_per_job"></a>
+### Nested Schema for `max_tres_per_job`
+
+Required:
+
+- `count` (Number) TRES count limit.
+- `type` (String) TRES type (e.g. cpu, mem, gres).
+
+Optional:
+
+- `name` (String) TRES name. Required for generic resources such as gres/gpu; omit for cpu and mem.
+
+
+<a id="nestedatt--max_tres_per_node"></a>
+### Nested Schema for `max_tres_per_node`
+
+Required:
+
+- `count` (Number) TRES count limit.
+- `type` (String) TRES type (e.g. cpu, mem, gres).
+
+Optional:
+
+- `name` (String) TRES name. Required for generic resources such as gres/gpu; omit for cpu and mem.
 
 ## Import
 
