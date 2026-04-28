@@ -118,6 +118,7 @@ resource "slurm_account" "physics_astro" {
   description    = "Astrophysics subgroup"
   parent_account = slurm_account.physics.name
   fairshare      = 60
+  allowed_qos    = [slurm_qos.debug.name]
 }
 
 # ============================================================================

@@ -72,12 +72,13 @@ resource "slurm_account" "dept_a" {
   max_jobs     = 500
 }
 
-# Top-level, minimal — no QOS or job limits
+# Top-level with fairshare; allowed_qos includes debug for u_two's association
 resource "slurm_account" "dept_b" {
   name         = "dept_b"
   description  = "Department B"
   organization = "org"
   fairshare    = 100
+  allowed_qos  = [slurm_qos.debug.name]
 }
 
 # Child accounts under dept_a
@@ -92,6 +93,7 @@ resource "slurm_account" "team_a2" {
   parent_account = slurm_account.dept_a.name
   fairshare      = 120
   default_qos    = slurm_qos.high.name
+  allowed_qos    = [slurm_qos.low.name, slurm_qos.medium.name, slurm_qos.high.name]
 }
 
 # Child account under dept_b
