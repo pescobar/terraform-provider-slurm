@@ -257,6 +257,30 @@ causing plan drift on subsequent applies.
 
 ## Import
 
+Import a QOS by its Slurm name:
+
 ```bash
 tofu import slurm_qos.standard standard
+```
+
+### Import behaviour
+
+`slurm_qos` fields are **Optional + Computed**, so after import the provider
+reads all attribute values directly from Slurm and stores them in state. A
+subsequent `tofu plan` will show no changes as long as your config matches
+what Slurm holds.
+
+This is different from `slurm_account` and `slurm_user`, which use an
+Optional-only (null-preservation) pattern where fields are left null after
+import and populated by a reconcile apply. See those resources' Import
+sections for details.
+
+Standard workflow:
+
+```bash
+# Import — state is fully populated from Slurm
+tofu import slurm_qos.standard standard
+
+# Plan — should show no changes if config matches Slurm
+tofu plan -detailed-exitcode
 ```

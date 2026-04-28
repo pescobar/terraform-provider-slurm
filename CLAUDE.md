@@ -112,6 +112,29 @@ provider "slurm" {
 
 ## Key Implementation Notes
 
+### Null-Preservation Pattern (import behaviour)
+
+`slurm_account` and `slurm_user` use **Optional-only** schema fields (no `Computed`).
+The Read functions only update an Optional field in state when the prior state value is
+already non-null. This prevents Slurm's inherited defaults (fairshare=1, inherited QOS,
+etc.) from appearing as drift after a fresh import where the prior state is empty.
+
+Consequence for import: after `tofu import`, all Optional fields start null. A
+**reconcile apply** (`tofu apply`) is required to write config-declared values to
+Slurm and populate state. After that, `tofu plan` must be clean.
+
+The `qos` field in `slurm_user` association blocks has a stricter rule: it is
+**never populated from Slurm during import** (`hasPrior && !prior.QOS.IsNull()`
+guard in `apiAssociationsToState`). Reason: if the existing qos list were loaded
+into state but config has no `qos` block, the reconcile apply would try to clear
+the list. Slurm rejects that when `default_qos` references a QOS in that list
+(`"This request would make it so some associations would not have access to their
+default qos."`).
+
+`slurm_qos` uses Optional+Computed fields and does NOT have this restriction —
+all QOS attributes are read from Slurm during import, and no reconcile apply is
+needed.
+
 ### Association Diff Logic (`user_association_diff.go`)
 - Pure functions, no side effects, independently testable.
 - `DiffAssociations(old, new) AssociationDiff` returns Create/Update/Delete lists.

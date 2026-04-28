@@ -52,3 +52,73 @@ resource "slurm_account" "hep" {
 ### Read-Only
 
 - `id` (String) The account name (same as name).
+
+## Import
+
+Import an account by its Slurm name:
+
+```bash
+tofu import slurm_account.physics physics
+```
+
+### What import reads and what it skips
+
+The provider uses a **null-preservation** pattern for Optional fields: a field
+is only tracked in state if it is explicitly declared in your configuration
+(i.e. non-null in state). This prevents Slurm's inherited defaults from causing
+perpetual drift after import.
+
+After `tofu import`, the state will contain:
+
+| Field | Populated after import? |
+|-------|------------------------|
+| `name` | Yes |
+| `description` | **No** — null until reconcile |
+| `organization` | **No** — null until reconcile |
+| `parent_account` | **No** — null until reconcile |
+| `fairshare` | **No** — null until reconcile |
+| `default_qos` | **No** — null until reconcile |
+| `allowed_qos` | **No** — null until reconcile |
+| `max_jobs` | **No** — null until reconcile |
+
+All optional fields start null after import regardless of what values Slurm
+holds. The reconcile apply (step 2 below) writes each config-declared value
+to Slurm and leaves fields absent from config untouched.
+
+### Standard import workflow
+
+```bash
+# Step 1 — import (state contains only the account name)
+tofu import slurm_account.physics physics
+
+# Step 2 — reconcile apply (writes config-declared values to Slurm)
+tofu apply
+
+# Step 3 — verify clean plan (must report no changes)
+tofu plan -detailed-exitcode
+```
+
+### What to declare in config before importing
+
+Declare any field you want Terraform to manage. Fields absent from config will
+remain null in state and will never be reconciled — a future out-of-band change
+to those fields in Slurm will not be detected as drift.
+
+If the account already has metadata and limits set in Slurm, mirror them in
+your config before importing so the reconcile apply confirms rather than
+changes them:
+
+```hcl
+resource "slurm_account" "physics" {
+  name         = "physics"
+  description  = "Physics department"    # declare if already set in Slurm
+  organization = "university"            # declare if already set in Slurm
+  fairshare    = 100                     # declare if already set in Slurm
+  default_qos  = "standard"             # declare if already set in Slurm
+  allowed_qos  = ["standard", "priority"] # declare if already set in Slurm
+}
+```
+
+After the reconcile apply, `tofu plan` must show no changes. If it shows
+changes it means the config values differ from what Slurm had — the apply will
+have corrected them to match config.

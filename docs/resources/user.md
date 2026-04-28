@@ -73,3 +73,98 @@ Optional:
 - `max_jobs` (Number) Maximum number of running jobs for this association.
 - `partition` (String) Optional partition to scope this association to.
 - `qos` (List of String) List of allowed QOS names for this association.
+
+## Import
+
+Import a user by Slurm username:
+
+```bash
+tofu import slurm_user.alice alice
+```
+
+### What import reads and what it skips
+
+The provider uses a **null-preservation** pattern for Optional fields: a field
+is only tracked in state if it is explicitly declared in your configuration
+(i.e. non-null in state). This prevents Slurm's inherited defaults — such as
+`fairshare = 1` or a QOS list inherited from the account — from being treated
+as drift after import.
+
+After `tofu import`, the state will contain:
+
+| Field | Populated after import? |
+|-------|------------------------|
+| `name` | Yes |
+| `default_account` | Yes |
+| `admin_level` | Yes (if set in Slurm) |
+| `association.account` | Yes |
+| `association.partition` | Yes |
+| `association.fairshare` | **No** — null until reconcile |
+| `association.default_qos` | **No** — null until reconcile |
+| `association.max_jobs` | **No** — null until reconcile |
+| `association.qos` | **No** — intentionally skipped (see below) |
+| Extended limit fields (`max_jobs_accrue`, TRES, etc.) | **No** — null until reconcile |
+
+### Why `qos` is not read during import
+
+The `qos` field in an association block is intentionally never populated during
+`import`. Slurm enforces a constraint that a user's `default_qos` must appear
+in their `qos` list. If the provider read the actual `qos` list from Slurm
+into state but your config does not declare a `qos` block, the reconcile apply
+would attempt to clear the qos list. Slurm rejects that request with:
+
+```
+slurmdb_associations_modify failed (This request would make it so some
+associations would not have access to their default qos.)
+```
+
+Leaving `qos` null after import avoids this: the reconcile only changes what
+config explicitly declares, and does not touch the existing qos list for
+associations where `qos` is absent from config.
+
+### Standard import workflow
+
+```bash
+# Step 1 — import (state is partial; limit fields are null)
+tofu import slurm_user.alice alice
+
+# Step 2 — reconcile apply (writes config-declared values to Slurm;
+#           leaves any fields not in config untouched in Slurm)
+tofu apply
+
+# Step 3 — verify clean plan (must report no changes)
+tofu plan -detailed-exitcode
+```
+
+### What to declare in config before importing
+
+All association limit fields you want Terraform to manage **must** be declared
+in config before you run `tofu import`. Fields absent from config will have
+null state after import and will never be reconciled — meaning:
+
+- Slurm may hold values for those fields that differ from what you expect.
+- A future out-of-band change to those fields in Slurm will not be detected
+  as drift.
+
+If you are importing a user whose associations already have a `qos` list, a
+`default_qos`, or fairshare limits set in Slurm, declare those values in your
+`association` block before importing so the reconcile apply confirms rather
+than changes them:
+
+```hcl
+resource "slurm_user" "alice" {
+  name            = "alice"
+  default_account = "physics"
+
+  association {
+    account     = "physics"
+    fairshare   = 50               # declare if already set in Slurm
+    default_qos = "standard"       # declare if already set in Slurm
+    qos         = ["standard", "priority"]  # declare if already set in Slurm
+  }
+}
+```
+
+After the reconcile apply, `tofu plan` must show no changes. If it shows
+changes it means the config values differ from what Slurm had — the apply will
+have corrected them to match config.
