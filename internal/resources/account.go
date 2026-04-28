@@ -66,17 +66,14 @@ func (r *accountResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"description": schema.StringAttribute{
 				Description: "A description of the account.",
 				Optional:    true,
-				Computed:    true,
 			},
 			"organization": schema.StringAttribute{
 				Description: "The organization this account belongs to.",
 				Optional:    true,
-				Computed:    true,
 			},
 			"parent_account": schema.StringAttribute{
 				Description: "The parent account name. Defaults to 'root'.",
 				Optional:    true,
-				Computed:    true,
 			},
 			// Account-level association attributes
 			"fairshare": schema.Int64Attribute{
@@ -188,26 +185,6 @@ func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest
 
 	plan.ID = plan.Name
 
-	// Read back from API to resolve computed fields (parent_account, description, organization)
-	// that are Optional+Computed and may still be unknown if not set in config.
-	created, err := r.client.GetAccount(plan.Name.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Error reading account after create", err.Error())
-		return
-	}
-	if created != nil {
-		plan.Description = types.StringValue(created.Description)
-		plan.Organization = types.StringValue(created.Organization)
-		if created.ParentAccount != "" {
-			plan.Parent = types.StringValue(created.ParentAccount)
-		} else if plan.Parent.IsUnknown() {
-			// Not set by user and API returned empty — resolve the unknown to null.
-			plan.Parent = types.StringNull()
-		}
-		// If user set parent_account but API returned empty, keep the planned
-		// value — Slurm accepted the parent but may not echo it back immediately.
-	}
-
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -233,35 +210,56 @@ func (r *accountResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	state.Name = types.StringValue(account.Name)
 	state.ID = types.StringValue(account.Name)
-	state.Description = types.StringValue(account.Description)
-	state.Organization = types.StringValue(account.Organization)
-	if account.ParentAccount != "" {
+	if !state.Description.IsNull() {
+		state.Description = types.StringValue(account.Description)
+	}
+	if !state.Organization.IsNull() {
+		state.Organization = types.StringValue(account.Organization)
+	}
+	if account.ParentAccount != "" && !state.Parent.IsNull() {
 		state.Parent = types.StringValue(account.ParentAccount)
 	}
 
-	// Read account-level association
-	assoc, err := r.client.GetAssociation(account.Name, "", r.client.Cluster, "")
+	// Read account-level association.
+	// The singular /association/ endpoint does not return account-level entries
+	// (user=""); use the plural /associations/ endpoint and filter instead.
+	assocResp, err := r.client.GetAssociations(map[string]string{
+		"account": account.Name,
+		"cluster": r.client.Cluster,
+	})
 	if err != nil {
-		// Association might not exist yet, that's ok
-		tflog.Warn(ctx, "Could not read account association", map[string]interface{}{
+		tflog.Warn(ctx, "Could not read account associations", map[string]interface{}{
 			"account": account.Name,
 			"error":   err.Error(),
 		})
-	} else if assoc != nil {
-		if assoc.SharesRaw != nil {
-			state.Fairshare = types.Int64Value(int64(*assoc.SharesRaw))
-		}
-		if assoc.Default != nil && assoc.Default.QOS != "" {
-			state.DefaultQOS = types.StringValue(assoc.Default.QOS)
-		}
-		if len(assoc.QOS) > 0 {
-			qosValues, diags := types.ListValueFrom(ctx, types.StringType, assoc.QOS)
-			resp.Diagnostics.Append(diags...)
-			state.AllowedQOS = qosValues
-		}
-		if assoc.Max != nil && assoc.Max.Jobs != nil && assoc.Max.Jobs.Per != nil &&
-			assoc.Max.Jobs.Per.Count != nil && assoc.Max.Jobs.Per.Count.Set {
-			state.MaxJobs = types.Int64Value(int64(assoc.Max.Jobs.Per.Count.Number))
+	} else {
+		for _, assoc := range assocResp.Associations {
+			if assoc.User != "" {
+				continue // skip user-level associations
+			}
+			// Null-preservation: only update Optional fields from the API when
+			// the current state already has a non-null value. This prevents
+			// Slurm's inherited defaults (fairshare=1, QOS=["normal"], etc.)
+			// from appearing in state when the config doesn't set those fields,
+			// which would otherwise cause perpetual drift after import.
+			if assoc.SharesRaw != nil && !state.Fairshare.IsNull() {
+				state.Fairshare = types.Int64Value(int64(*assoc.SharesRaw))
+			}
+			if assoc.Default != nil && assoc.Default.QOS != "" && !state.DefaultQOS.IsNull() {
+				state.DefaultQOS = types.StringValue(assoc.Default.QOS)
+			}
+			if len(assoc.QOS) > 0 && !state.AllowedQOS.IsNull() {
+				qosValues, diags := types.ListValueFrom(ctx, types.StringType, assoc.QOS)
+				resp.Diagnostics.Append(diags...)
+				state.AllowedQOS = qosValues
+			}
+			// max_jobs maps to max.jobs.active (MaxJobs), not max.jobs.per.count (GrpJobs).
+			if assoc.Max != nil && assoc.Max.Jobs != nil &&
+				assoc.Max.Jobs.Active != nil && assoc.Max.Jobs.Active.Set &&
+				!state.MaxJobs.IsNull() {
+				state.MaxJobs = types.Int64Value(int64(assoc.Max.Jobs.Active.Number))
+			}
+			break
 		}
 	}
 
@@ -281,7 +279,7 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 		"name": plan.Name.ValueString(),
 	})
 
-	// Update account metadata
+	// Update account metadata via /accounts/ endpoint.
 	account := client.Account{
 		Name: plan.Name.ValueString(),
 	}
@@ -300,14 +298,26 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	// Update account-level association limits via accounts_association (upsert).
-	assocSet := &client.AssocRecSet{}
+	// Update account-level association limits via /associations/ (same endpoint
+	// as user-level associations). Using accounts_association/ here causes a
+	// race condition when user association updates run in parallel: Slurm drops
+	// QOS entries from the account-level association. The /associations/ endpoint
+	// serializes correctly alongside concurrent user association updates.
+	assoc := client.Association{
+		Account: plan.Name.ValueString(),
+		Cluster: r.client.Cluster,
+		User:    "",
+	}
+	hasLimits := false
+
 	if !plan.Fairshare.IsNull() {
 		v := int(plan.Fairshare.ValueInt64())
-		assocSet.Fairshare = &v
+		assoc.SharesRaw = &v
+		hasLimits = true
 	}
 	if !plan.DefaultQOS.IsNull() {
-		assocSet.DefaultQOS = plan.DefaultQOS.ValueString()
+		assoc.Default = &client.AssociationDefaults{QOS: plan.DefaultQOS.ValueString()}
+		hasLimits = true
 	}
 	if !plan.AllowedQOS.IsNull() {
 		var qosList []string
@@ -316,26 +326,23 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		assocSet.QOSLevel = qosList
+		assoc.QOS = qosList
+		hasLimits = true
 	}
 	if !plan.MaxJobs.IsNull() {
-		assocSet.MaxJobs = &client.SlurmInt{
-			Number: int(plan.MaxJobs.ValueInt64()),
-			Set:    true,
+		assoc.Max = &client.AssociationMax{
+			Jobs: &client.AssociationMaxJobs{
+				Active: &client.SlurmInt{Number: int(plan.MaxJobs.ValueInt64()), Set: true},
+			},
 		}
+		hasLimits = true
 	}
 
-	updateReq := client.AccountAssociationRequest{
-		AssociationCondition: client.AccountAssociationCondition{
-			Accounts:    []string{plan.Name.ValueString()},
-			Clusters:    []string{r.client.Cluster},
-			Association: assocSet,
-		},
-		Account: client.AccountShort{},
-	}
-	if err := r.client.CreateAccountWithAssociation(updateReq); err != nil {
-		resp.Diagnostics.AddError("Error updating account association", err.Error())
-		return
+	if hasLimits {
+		if err := r.client.CreateAssociations([]client.Association{assoc}); err != nil {
+			resp.Diagnostics.AddError("Error updating account association", err.Error())
+			return
+		}
 	}
 
 	plan.ID = plan.Name

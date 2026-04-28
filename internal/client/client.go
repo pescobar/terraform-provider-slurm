@@ -141,7 +141,13 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Check for HTTP-level errors
+	// Check for HTTP-level errors.
+	// HTTP 304 (Not Modified) is returned by Slurm when a POST results in no
+	// changes (the submitted data matches the current state). Treat it as
+	// success — the resource is already in the desired state.
+	if resp.StatusCode == http.StatusNotModified {
+		return nil, nil
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		apiErr := &APIError{
 			StatusCode: resp.StatusCode,
@@ -262,8 +268,8 @@ type AccountResponse struct {
 // Account represents a Slurm account.
 type Account struct {
 	Name          string   `json:"name"`
-	Description   string   `json:"description,omitempty"`
-	Organization  string   `json:"organization,omitempty"`
+	Description   string   `json:"description"`
+	Organization  string   `json:"organization"`
 	ParentAccount string   `json:"parent_account,omitempty"`
 	Coordinators  []string `json:"coordinators,omitempty"`
 }

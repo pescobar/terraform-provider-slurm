@@ -948,8 +948,10 @@ func (r *userResource) apiAssociationsToState(ctx context.Context, assocs []clie
 			attrs["default_qos"] = types.StringValue(a.Default.QOS)
 		}
 
-		// qos list
-		if len(a.QOS) > 0 && (!hasPrior || !prior.QOS.IsNull()) {
+		// qos list — only propagate when we have prior state. On import (hasPrior=false)
+		// we skip qos to avoid reconcile failures: Slurm rejects clearing a qos list when
+		// default_qos would become inaccessible (e.g. account has no allowed_qos of its own).
+		if len(a.QOS) > 0 && hasPrior && !prior.QOS.IsNull() {
 			qosVal, diags := types.ListValueFrom(ctx, types.StringType, a.QOS)
 			diagnostics.Append(diags...)
 			attrs["qos"] = qosVal
