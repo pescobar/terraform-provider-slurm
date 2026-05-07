@@ -32,18 +32,24 @@ func (d *userDataSource) Metadata(_ context.Context, req datasource.MetadataRequ
 
 func (d *userDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = dsschema.Schema{
-		MarkdownDescription: "Reads an existing Slurm user by name, including every association and its limits as a nested block.",
+		MarkdownDescription: "Reads an existing Slurm user by name, including every association and its limits.",
 		Attributes: map[string]dsschema.Attribute{
 			"id":              dsschema.StringAttribute{MarkdownDescription: "The user name (same as name).", Computed: true},
 			"name":            dsschema.StringAttribute{MarkdownDescription: "The Slurm user name to look up.", Required: true},
 			"admin_level":     dsschema.StringAttribute{MarkdownDescription: "Admin level: None, Operator, or Administrator.", Computed: true},
 			"default_account": dsschema.StringAttribute{MarkdownDescription: "The user's default Slurm account, derived from the association marked is_default.", Computed: true},
 			"default_wc_key":  dsschema.StringAttribute{MarkdownDescription: "Default workload characterization key.", Computed: true},
-		},
-		Blocks: map[string]dsschema.Block{
-			"association": dsschema.SetNestedBlock{
-				MarkdownDescription: "All associations for this user, one block per (account, partition) pair. Every field is read-only.",
-				NestedObject: dsschema.NestedBlockObject{
+
+			// SetNestedAttribute (not Block) so the framework can represent
+			// "unknown set" before the data source has been read. With
+			// SetNestedBlock, OpenTofu/Terraform fold the unknown nested
+			// collection to an empty set at plan time, breaking any output
+			// that indexes or filters into it (e.g. `[for a in
+			// data.slurm_user.x.association : a.fairshare if ...][0]`).
+			"association": dsschema.SetNestedAttribute{
+				MarkdownDescription: "All associations for this user, one entry per (account, partition) pair. Every field is read-only.",
+				Computed:            true,
+				NestedObject: dsschema.NestedAttributeObject{
 					Attributes: map[string]dsschema.Attribute{
 						"account":         dsschema.StringAttribute{MarkdownDescription: "Slurm account name.", Computed: true},
 						"partition":       dsschema.StringAttribute{MarkdownDescription: "Partition (empty for unscoped associations).", Computed: true},
