@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
@@ -51,9 +52,19 @@ var qosPreemptModeValues = []string{
 }
 
 var (
-	_ resource.Resource                = &qosResource{}
-	_ resource.ResourceWithImportState = &qosResource{}
+	_ resource.Resource                   = &qosResource{}
+	_ resource.ResourceWithImportState    = &qosResource{}
+	_ resource.ResourceWithValidateConfig = &qosResource{}
 )
+
+// systemQOSNames lists the QOS names that slurmdbd auto-creates at database
+// initialisation. Managing these as provider resources is a footgun: a
+// destroy soft-deletes the row (deleted=1), and the next apply triggers an
+// UPDATE that slurmrestd's internal verification query then can't find,
+// surfacing as "Slurmdbd query returned with empty list" (Bug 3 in
+// CLAUDE.md). Today only "normal" exists; the slice keeps the door open
+// for future Slurm versions.
+var systemQOSNames = []string{"normal"}
 
 type qosResource struct {
 	client *client.Client
@@ -372,6 +383,59 @@ func (r *qosResource) Configure(_ context.Context, req resource.ConfigureRequest
 	if c := configureClient(req, resp); c != nil {
 		r.client = c
 	}
+}
+
+// ValidateConfig emits a plan-time warning when a slurm_qos resource is
+// configured to manage one of Slurm's auto-created system QOS entries
+// (currently just "normal"). It does not block the plan — users may still
+// have legitimate reasons to manage the row — but the diagnostic surfaces
+// the soft-delete footgun documented as Bug 3 in CLAUDE.md so it is not
+// rediscovered after the first destroy/apply cycle.
+func (r *qosResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var cfg qosResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfg)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if w, ok := systemQOSWarning(cfg.Name); ok {
+		resp.Diagnostics.AddAttributeWarning(path.Root("name"), w.Summary, w.Detail)
+	}
+}
+
+// qosConfigWarning is the structured form of a ValidateConfig warning so
+// the matching detection can be unit-tested without a tfsdk.Config.
+type qosConfigWarning struct {
+	Summary string
+	Detail  string
+}
+
+// systemQOSWarning returns a warning when name matches a built-in system
+// QOS. It returns ok=false if name is null/unknown (defer to apply) or
+// not a system name.
+func systemQOSWarning(name types.String) (qosConfigWarning, bool) {
+	if name.IsNull() || name.IsUnknown() {
+		return qosConfigWarning{}, false
+	}
+	got := name.ValueString()
+	for _, n := range systemQOSNames {
+		if got == n {
+			return qosConfigWarning{
+				Summary: fmt.Sprintf("Managing built-in system QOS %q is fragile", got),
+				Detail: fmt.Sprintf(
+					"%q is auto-created by slurmdbd at database initialisation. "+
+						"Managing it as a slurm_qos resource works on the first apply, but a "+
+						"destroy soft-deletes the row (deleted=1) and the next apply hits "+
+						"\"Slurmdbd query returned with empty list\" because slurmrestd's "+
+						"verification query does not match the restored system row. "+
+						"Prefer renaming this resource to a non-system QOS (e.g. \"standard\", "+
+						"\"default\"), or be prepared to drop the soft-deleted row out-of-band "+
+						"between cycles.",
+					got,
+				),
+			}, true
+		}
+	}
+	return qosConfigWarning{}, false
 }
 
 func (r *qosResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

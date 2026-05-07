@@ -341,6 +341,34 @@ jobs:
           done
           echo "PASS: all 10 plan-time validator violations were correctly rejected"
 
+      - name: Run system-QOS warning fixture (plan-time, no apply)
+        env:
+          TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
+          TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
+          TF_VAR_slurm_api_version: ${{ matrix.api_version }}
+        run: |
+          cd examples/system-qos-warning/
+          # Plan only — applying would mutate the live "normal" system QOS,
+          # which is the footgun this warning is meant to prevent.
+          set +e
+          output=$(tofu plan 2>&1)
+          exit_code=$?
+          set -e
+          echo "$output"
+          if [ "$exit_code" -ne 0 ]; then
+            echo "FAIL: warnings should not fail plan; got exit $exit_code"
+            exit 1
+          fi
+          if ! echo "$output" | grep -qF "Warning:"; then
+            echo "FAIL: expected a Warning diagnostic, found none"
+            exit 1
+          fi
+          if ! echo "$output" | grep -qF 'Managing built-in system QOS "normal" is fragile'; then
+            echo "FAIL: expected the system-QOS warning summary, did not find it"
+            exit 1
+          fi
+          echo "PASS: system-QOS warning fired as expected"
+
       - name: Run QOS acceptance tests (all attributes + import verification)
         env:
           TF_CLI_CONFIG_FILE: /tmp/dev.tofurc

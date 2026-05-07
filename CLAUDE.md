@@ -183,4 +183,4 @@ terraform-provider-slurm/
 - Acceptance tests
 - CI with GitHub Actions
 - Auth improvements (JWT key file instead of short-lived tokens)
-- Handle the `normal` QOS corner case: Slurm auto-creates a QOS named `normal` at DB init; managing it as a `slurm_qos` resource will fail on destroy+recreate (see Bug 3). At minimum this needs a documentation warning; optionally the provider could emit a Terraform warning diagnostic when it detects a system QOS name.
+- ~~Handle the `normal` QOS corner case~~ — done. `slurm_qos` `ValidateConfig` now emits a Terraform warning when a managed QOS name matches an entry in `systemQOSNames` (currently just `normal`). The list is package-level so additional system QOS names can be added without changing the validator. Covered by `TestSystemQOSWarning_*` unit tests and the `examples/system-qos-warning/` plan-only acceptance fixture.
