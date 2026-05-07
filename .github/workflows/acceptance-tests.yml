@@ -297,6 +297,45 @@ jobs:
           echo "PASS: both QOS constraint violations were correctly rejected"
           tofu destroy -auto-approve
 
+      - name: Run schema validator tests (plan-time, no API calls)
+        env:
+          TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
+          TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
+          TF_VAR_slurm_api_version: ${{ matrix.api_version }}
+        run: |
+          cd examples/validator-tests/
+          # Every resource block in this fixture deliberately violates one
+          # plan-time validator. `tofu plan` must exit non-zero and emit one
+          # diagnostic per violation. No API calls happen, so there is nothing
+          # to destroy on success or failure.
+          set +e
+          output=$(tofu plan 2>&1)
+          exit_code=$?
+          set -e
+          echo "$output"
+          if [ "$exit_code" -eq 0 ]; then
+            echo "FAIL: expected tofu plan to fail but it succeeded — a validator regressed"
+            exit 1
+          fi
+          # Count distinct validator diagnostics. Framework emits "Invalid
+          # Attribute Value" for OneOf and "Invalid Attribute Value Match" /
+          # "Invalid Attribute Value Length" variants for the int validators.
+          # Either phrasing satisfies us; we just need eight distinct ones.
+          diag_count=$(echo "$output" | grep -cE "Invalid Attribute Value")
+          if [ "$diag_count" -lt 8 ]; then
+            echo "FAIL: expected 8 validator diagnostics, got $diag_count"
+            exit 1
+          fi
+          # Spot-check a representative diagnostic from each validator class so
+          # a regression that silently swaps one error for another is caught.
+          for needle in "fairshare" "max_jobs" "admin_level" "flags" "preempt_mode" "priority" "count"; do
+            if ! echo "$output" | grep -qF "$needle"; then
+              echo "FAIL: expected a diagnostic mentioning '$needle' but found none"
+              exit 1
+            fi
+          done
+          echo "PASS: all 8 plan-time validator violations were correctly rejected"
+
       - name: Run QOS acceptance tests (all attributes + import verification)
         env:
           TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
