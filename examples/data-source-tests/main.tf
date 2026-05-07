@@ -52,6 +52,11 @@ resource "slurm_account" "ds_acct" {
   max_jobs    = 50
 }
 
+resource "slurm_account" "ds_acct_alt" {
+  name      = "ds_acct_alt"
+  fairshare = 2
+}
+
 resource "slurm_user" "ds_user" {
   name            = "ds_user"
   default_account = "ds_acct"
@@ -61,6 +66,22 @@ resource "slurm_user" "ds_user" {
     account   = slurm_account.ds_acct.name
     fairshare = 7
     max_jobs  = 12
+  }
+}
+
+# Two-association user — exercises that the data-source SetNestedBlock
+# round-trips multiple entries, not just one.
+resource "slurm_user" "ds_user_multi" {
+  name            = "ds_user_multi"
+  default_account = "ds_acct"
+
+  association {
+    account   = slurm_account.ds_acct.name
+    fairshare = 5
+  }
+  association {
+    account   = slurm_account.ds_acct_alt.name
+    fairshare = 3
   }
 }
 
@@ -81,6 +102,11 @@ data "slurm_user" "by_name" {
   depends_on = [slurm_user.ds_user]
 }
 
+data "slurm_user" "by_name_multi" {
+  name       = slurm_user.ds_user_multi.name
+  depends_on = [slurm_user.ds_user_multi]
+}
+
 # ---------- Outputs the CI step asserts on ----------
 
 output "qos_priority" { value = data.slurm_qos.by_name.priority }
@@ -93,3 +119,24 @@ output "account_max_jobs" { value = data.slurm_account.by_name.max_jobs }
 output "user_default_account" { value = data.slurm_user.by_name.default_account }
 output "user_admin_level" { value = data.slurm_user.by_name.admin_level }
 output "user_association_count" { value = length(data.slurm_user.by_name.association) }
+
+# Filter the SetNestedBlock by account to extract a deterministic value —
+# Set ordering is not stable across reads, so indexing by [0] would be
+# brittle. The [0] applied to the filtered list is safe because each user
+# has at most one association per (account, partition) pair.
+output "user_assoc_fairshare" {
+  value = [for a in data.slurm_user.by_name.association : a.fairshare if a.account == "ds_acct"][0]
+}
+output "user_assoc_max_jobs" {
+  value = [for a in data.slurm_user.by_name.association : a.max_jobs if a.account == "ds_acct"][0]
+}
+
+# Multi-association user — confirms the data source returns *all* associations,
+# not just one. A second filter pulls the alt-account fairshare for an extra
+# spot-check on the per-block decoding.
+output "user_multi_assoc_count" {
+  value = length(data.slurm_user.by_name_multi.association)
+}
+output "user_multi_alt_fairshare" {
+  value = [for a in data.slurm_user.by_name_multi.association : a.fairshare if a.account == "ds_acct_alt"][0]
+}

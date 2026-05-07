@@ -115,6 +115,13 @@ func (d *qosDataSource) Read(ctx context.Context, req datasource.ReadRequest, re
 		)
 		return
 	}
+	if qos == nil {
+		resp.Diagnostics.AddError(
+			"QOS not found",
+			fmt.Sprintf("No Slurm QOS named %q exists.", cfg.Name.ValueString()),
+		)
+		return
+	}
 
 	state := qosAPIToState(ctx, qos, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
