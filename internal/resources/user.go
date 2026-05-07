@@ -950,22 +950,3 @@ func (r *userResource) hasAccountAssociation(assocs []client.Association, accoun
 	return false
 }
 
-// splitFirstAssociation separates the association for the default account
-// from the rest. The default account's association is returned first because
-// it must be created atomically with the user via users_association endpoint.
-func (r *userResource) splitFirstAssociation(assocs []client.Association, defaultAccount string) (client.Association, []client.Association) {
-	var first client.Association
-	var rest []client.Association
-	found := false
-
-	for _, a := range assocs {
-		if !found && a.Account == defaultAccount {
-			first = a
-			found = true
-		} else {
-			rest = append(rest, a)
-		}
-	}
-
-	return first, rest
-}
