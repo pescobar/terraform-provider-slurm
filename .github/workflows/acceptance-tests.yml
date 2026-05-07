@@ -102,6 +102,47 @@ jobs:
           }
           EOF
 
+      - name: Validate registry doc snippets
+        env:
+          TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
+          TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
+        run: |
+          # Each registry-doc fragment under examples/{provider,resources,data-sources}/
+          # references resources defined in sibling fragments (e.g.
+          # slurm_account.physics → slurm_qos.standard) because the rendered
+          # docs assume the reader is following the full set, not one page in
+          # isolation. Validating fragments individually would emit spurious
+          # "Reference to undeclared resource" errors. So merge every fragment
+          # into one temp dir, add the required_providers block (no fragment
+          # carries one), and run a single `tofu validate`. That still catches
+          # the regressions we care about — renamed attributes, removed
+          # fields, wrong types — across the union of all snippets.
+          set -e
+          tmpdir=$(mktemp -d)
+          for dir in examples/provider \
+                     examples/resources/slurm_qos \
+                     examples/resources/slurm_account \
+                     examples/resources/slurm_user \
+                     examples/data-sources/slurm_qos \
+                     examples/data-sources/slurm_account \
+                     examples/data-sources/slurm_user; do
+            label=$(echo "$dir" | tr / _)
+            for f in "$dir"/*.tf; do
+              cp "$f" "$tmpdir/${label}_$(basename "$f")"
+            done
+          done
+          cat > "$tmpdir/_required_providers.tf" <<'EOF'
+          terraform {
+            required_providers {
+              slurm = { source = "pescobar/slurm" }
+            }
+          }
+          EOF
+          ls "$tmpdir"
+          (cd "$tmpdir" && tofu validate)
+          rm -rf "$tmpdir"
+          echo "PASS: every registry doc snippet validates against the live schema"
+
       - name: Run basic acceptance tests
         env:
           TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
