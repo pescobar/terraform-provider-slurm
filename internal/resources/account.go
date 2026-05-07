@@ -3,7 +3,6 @@ package resources
 import (
 	"context"
 
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -184,10 +183,10 @@ func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest
 
 	// accounts_association/ does not accept TRES limits; set them via associations/
 	// in a second call if any are configured.
-	if tresMax := r.extractAccountTRESMax(ctx, plan, &resp.Diagnostics); tresMax != nil {
-		if resp.Diagnostics.HasError() {
-			return
-		}
+	if tresMax := buildAssocMaxTRES(ctx,
+		plan.MaxTRESPerJob, plan.MaxTRESPerNode, plan.MaxTRESMinsPerJob,
+		plan.GrpTRES, plan.GrpTRESMins, plan.GrpTRESRunMins,
+	); tresMax != nil {
 		tresAssoc := client.Association{
 			Account: plan.Name.ValueString(),
 			Cluster: r.client.Cluster,
@@ -277,32 +276,24 @@ func (r *accountResource) Read(ctx context.Context, req resource.ReadRequest, re
 				state.MaxJobs = types.Int64Value(int64(assoc.Max.Jobs.Active.Number))
 			}
 			// TRES limits — null-preservation: only update when prior state is non-null.
-			if assoc.Max != nil && assoc.Max.TRES != nil {
-				t := assoc.Max.TRES
-				if len(t.Total) > 0 && !state.GrpTRES.IsNull() {
-					state.GrpTRES = apiTresListToSet(ctx, t.Total, &resp.Diagnostics)
-				}
-				if t.Group != nil {
-					if len(t.Group.Minutes) > 0 && !state.GrpTRESMins.IsNull() {
-						state.GrpTRESMins = apiTresListToSet(ctx, t.Group.Minutes, &resp.Diagnostics)
-					}
-					if len(t.Group.Active) > 0 && !state.GrpTRESRunMins.IsNull() {
-						state.GrpTRESRunMins = apiTresListToSet(ctx, t.Group.Active, &resp.Diagnostics)
-					}
-				}
-				if t.Per != nil {
-					if len(t.Per.Job) > 0 && !state.MaxTRESPerJob.IsNull() {
-						state.MaxTRESPerJob = apiTresListToSet(ctx, t.Per.Job, &resp.Diagnostics)
-					}
-					if len(t.Per.Node) > 0 && !state.MaxTRESPerNode.IsNull() {
-						state.MaxTRESPerNode = apiTresListToSet(ctx, t.Per.Node, &resp.Diagnostics)
-					}
-				}
-				if t.Minutes != nil && t.Minutes.Per != nil {
-					if len(t.Minutes.Per.Job) > 0 && !state.MaxTRESMinsPerJob.IsNull() {
-						state.MaxTRESMinsPerJob = apiTresListToSet(ctx, t.Minutes.Per.Job, &resp.Diagnostics)
-					}
-				}
+			tres := snapshotAssocMaxTRES(ctx, assoc.Max, &resp.Diagnostics)
+			if !state.GrpTRES.IsNull() && !tres.GrpTotal.IsNull() {
+				state.GrpTRES = tres.GrpTotal
+			}
+			if !state.GrpTRESMins.IsNull() && !tres.GrpMins.IsNull() {
+				state.GrpTRESMins = tres.GrpMins
+			}
+			if !state.GrpTRESRunMins.IsNull() && !tres.GrpRunMins.IsNull() {
+				state.GrpTRESRunMins = tres.GrpRunMins
+			}
+			if !state.MaxTRESPerJob.IsNull() && !tres.MaxPerJob.IsNull() {
+				state.MaxTRESPerJob = tres.MaxPerJob
+			}
+			if !state.MaxTRESPerNode.IsNull() && !tres.MaxPerNode.IsNull() {
+				state.MaxTRESPerNode = tres.MaxPerNode
+			}
+			if !state.MaxTRESMinsPerJob.IsNull() && !tres.MaxMinsPerJob.IsNull() {
+				state.MaxTRESMinsPerJob = tres.MaxMinsPerJob
 			}
 			break
 		}
@@ -379,10 +370,10 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 		hasLimits = true
 	}
-	if tresMax := r.extractAccountTRESMax(ctx, plan, &resp.Diagnostics); tresMax != nil {
-		if resp.Diagnostics.HasError() {
-			return
-		}
+	if tresMax := buildAssocMaxTRES(ctx,
+		plan.MaxTRESPerJob, plan.MaxTRESPerNode, plan.MaxTRESMinsPerJob,
+		plan.GrpTRES, plan.GrpTRESMins, plan.GrpTRESRunMins,
+	); tresMax != nil {
 		if assoc.Max == nil {
 			assoc.Max = &client.AssociationMax{}
 		}
@@ -425,74 +416,3 @@ func (r *accountResource) ImportState(ctx context.Context, req resource.ImportSt
 	importStateByName(ctx, req, resp)
 }
 
-// extractAccountTRESMax builds the TRES portion of AssociationMax from the plan.
-// Returns nil when no TRES fields are set, so callers can skip the API call.
-//
-// API path mapping (v0.0.42):
-//
-//	MaxTRES        → max.tres.per.job
-//	MaxTRESPerNode → max.tres.per.node
-//	MaxTRESMins    → max.tres.minutes.per.job
-//	GrpTRES        → max.tres.total
-//	GrpTRESMins    → max.tres.group.minutes
-//	GrpTRESRunMins → max.tres.group.active
-func (r *accountResource) extractAccountTRESMax(ctx context.Context, plan accountResourceModel, diagnostics *diag.Diagnostics) *client.AssociationMaxTRES {
-	var tres client.AssociationMaxTRES
-	set := false
-
-	if !plan.MaxTRESPerJob.IsNull() && !plan.MaxTRESPerJob.IsUnknown() {
-		if list := planTresListToAPI(ctx, plan.MaxTRESPerJob); len(list) > 0 {
-			if tres.Per == nil {
-				tres.Per = &client.AssociationMaxTRESPer{}
-			}
-			tres.Per.Job = list
-			set = true
-		}
-	}
-	if !plan.MaxTRESPerNode.IsNull() && !plan.MaxTRESPerNode.IsUnknown() {
-		if list := planTresListToAPI(ctx, plan.MaxTRESPerNode); len(list) > 0 {
-			if tres.Per == nil {
-				tres.Per = &client.AssociationMaxTRESPer{}
-			}
-			tres.Per.Node = list
-			set = true
-		}
-	}
-	if !plan.MaxTRESMinsPerJob.IsNull() && !plan.MaxTRESMinsPerJob.IsUnknown() {
-		if list := planTresListToAPI(ctx, plan.MaxTRESMinsPerJob); len(list) > 0 {
-			tres.Minutes = &client.AssociationMaxTRESMins{
-				Per: &client.AssociationMaxTRESMinsPer{Job: list},
-			}
-			set = true
-		}
-	}
-	if !plan.GrpTRES.IsNull() && !plan.GrpTRES.IsUnknown() {
-		if list := planTresListToAPI(ctx, plan.GrpTRES); len(list) > 0 {
-			tres.Total = list
-			set = true
-		}
-	}
-	if !plan.GrpTRESMins.IsNull() && !plan.GrpTRESMins.IsUnknown() {
-		if list := planTresListToAPI(ctx, plan.GrpTRESMins); len(list) > 0 {
-			if tres.Group == nil {
-				tres.Group = &client.AssociationMaxTRESGroup{}
-			}
-			tres.Group.Minutes = list
-			set = true
-		}
-	}
-	if !plan.GrpTRESRunMins.IsNull() && !plan.GrpTRESRunMins.IsUnknown() {
-		if list := planTresListToAPI(ctx, plan.GrpTRESRunMins); len(list) > 0 {
-			if tres.Group == nil {
-				tres.Group = &client.AssociationMaxTRESGroup{}
-			}
-			tres.Group.Active = list
-			set = true
-		}
-	}
-
-	if !set {
-		return nil
-	}
-	return &tres
-}

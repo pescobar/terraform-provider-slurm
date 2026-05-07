@@ -744,67 +744,11 @@ func (r *userResource) extractAssocMax(ctx context.Context, am associationModel,
 	}
 
 	// ---- max.tres ----
-	var tres client.AssociationMaxTRES
-	tresSet := false
-
-	if !am.MaxTRESPerJob.IsNull() && !am.MaxTRESPerJob.IsUnknown() {
-		list := planTresListToAPI(ctx, am.MaxTRESPerJob)
-		if len(list) > 0 {
-			if tres.Per == nil {
-				tres.Per = &client.AssociationMaxTRESPer{}
-			}
-			tres.Per.Job = list
-			tresSet = true
-		}
-	}
-	if !am.MaxTRESPerNode.IsNull() && !am.MaxTRESPerNode.IsUnknown() {
-		list := planTresListToAPI(ctx, am.MaxTRESPerNode)
-		if len(list) > 0 {
-			if tres.Per == nil {
-				tres.Per = &client.AssociationMaxTRESPer{}
-			}
-			tres.Per.Node = list
-			tresSet = true
-		}
-	}
-	if !am.MaxTRESMinsPerJob.IsNull() && !am.MaxTRESMinsPerJob.IsUnknown() {
-		list := planTresListToAPI(ctx, am.MaxTRESMinsPerJob)
-		if len(list) > 0 {
-			tres.Minutes = &client.AssociationMaxTRESMins{
-				Per: &client.AssociationMaxTRESMinsPer{Job: list},
-			}
-			tresSet = true
-		}
-	}
-	if !am.GrpTRES.IsNull() && !am.GrpTRES.IsUnknown() {
-		list := planTresListToAPI(ctx, am.GrpTRES)
-		if len(list) > 0 {
-			tres.Total = list
-			tresSet = true
-		}
-	}
-	if !am.GrpTRESMins.IsNull() && !am.GrpTRESMins.IsUnknown() {
-		list := planTresListToAPI(ctx, am.GrpTRESMins)
-		if len(list) > 0 {
-			if tres.Group == nil {
-				tres.Group = &client.AssociationMaxTRESGroup{}
-			}
-			tres.Group.Minutes = list
-			tresSet = true
-		}
-	}
-	if !am.GrpTRESRunMins.IsNull() && !am.GrpTRESRunMins.IsUnknown() {
-		list := planTresListToAPI(ctx, am.GrpTRESRunMins)
-		if len(list) > 0 {
-			if tres.Group == nil {
-				tres.Group = &client.AssociationMaxTRESGroup{}
-			}
-			tres.Group.Active = list
-			tresSet = true
-		}
-	}
-	if tresSet {
-		m.TRES = &tres
+	if tres := buildAssocMaxTRES(ctx,
+		am.MaxTRESPerJob, am.MaxTRESPerNode, am.MaxTRESMinsPerJob,
+		am.GrpTRES, am.GrpTRESMins, am.GrpTRESRunMins,
+	); tres != nil {
+		m.TRES = tres
 		set = true
 	}
 
@@ -952,32 +896,24 @@ func (r *userResource) apiAssociationsToState(ctx context.Context, assocs []clie
 		}
 
 		// max.tres.*
-		if a.Max != nil && a.Max.TRES != nil {
-			t := a.Max.TRES
-			if len(t.Total) > 0 && (!hasPrior || !prior.GrpTRES.IsNull()) {
-				attrs["grp_tres"] = apiTresListToSet(ctx, t.Total, diagnostics)
-			}
-			if t.Group != nil {
-				if len(t.Group.Minutes) > 0 && (!hasPrior || !prior.GrpTRESMins.IsNull()) {
-					attrs["grp_tres_mins"] = apiTresListToSet(ctx, t.Group.Minutes, diagnostics)
-				}
-				if len(t.Group.Active) > 0 && (!hasPrior || !prior.GrpTRESRunMins.IsNull()) {
-					attrs["grp_tres_run_mins"] = apiTresListToSet(ctx, t.Group.Active, diagnostics)
-				}
-			}
-			if t.Per != nil {
-				if len(t.Per.Job) > 0 && (!hasPrior || !prior.MaxTRESPerJob.IsNull()) {
-					attrs["max_tres_per_job"] = apiTresListToSet(ctx, t.Per.Job, diagnostics)
-				}
-				if len(t.Per.Node) > 0 && (!hasPrior || !prior.MaxTRESPerNode.IsNull()) {
-					attrs["max_tres_per_node"] = apiTresListToSet(ctx, t.Per.Node, diagnostics)
-				}
-			}
-			if t.Minutes != nil && t.Minutes.Per != nil {
-				if len(t.Minutes.Per.Job) > 0 && (!hasPrior || !prior.MaxTRESMinsPerJob.IsNull()) {
-					attrs["max_tres_mins_per_job"] = apiTresListToSet(ctx, t.Minutes.Per.Job, diagnostics)
-				}
-			}
+		tres := snapshotAssocMaxTRES(ctx, a.Max, diagnostics)
+		if !tres.GrpTotal.IsNull() && (!hasPrior || !prior.GrpTRES.IsNull()) {
+			attrs["grp_tres"] = tres.GrpTotal
+		}
+		if !tres.GrpMins.IsNull() && (!hasPrior || !prior.GrpTRESMins.IsNull()) {
+			attrs["grp_tres_mins"] = tres.GrpMins
+		}
+		if !tres.GrpRunMins.IsNull() && (!hasPrior || !prior.GrpTRESRunMins.IsNull()) {
+			attrs["grp_tres_run_mins"] = tres.GrpRunMins
+		}
+		if !tres.MaxPerJob.IsNull() && (!hasPrior || !prior.MaxTRESPerJob.IsNull()) {
+			attrs["max_tres_per_job"] = tres.MaxPerJob
+		}
+		if !tres.MaxPerNode.IsNull() && (!hasPrior || !prior.MaxTRESPerNode.IsNull()) {
+			attrs["max_tres_per_node"] = tres.MaxPerNode
+		}
+		if !tres.MaxMinsPerJob.IsNull() && (!hasPrior || !prior.MaxTRESMinsPerJob.IsNull()) {
+			attrs["max_tres_mins_per_job"] = tres.MaxMinsPerJob
 		}
 
 		obj, diags := types.ObjectValue(associationModelType(), attrs)

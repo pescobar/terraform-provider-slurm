@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -175,6 +176,123 @@ func newImportState() tfsdk.State {
 	return tfsdk.State{
 		Raw: rawState,
 		Schema: importTestSchema(),
+	}
+}
+
+// ---------------------------------------------------------------------------
+// snapshotAssocMaxTRES
+// ---------------------------------------------------------------------------
+
+func TestSnapshotAssocMaxTRES_NilMaxAllNullSets(t *testing.T) {
+	ctx := context.Background()
+	var diags diag.Diagnostics
+	snap := snapshotAssocMaxTRES(ctx, nil, &diags)
+	for name, s := range map[string]types.Set{
+		"GrpTotal":      snap.GrpTotal,
+		"GrpMins":       snap.GrpMins,
+		"GrpRunMins":    snap.GrpRunMins,
+		"MaxPerJob":     snap.MaxPerJob,
+		"MaxPerNode":    snap.MaxPerNode,
+		"MaxMinsPerJob": snap.MaxMinsPerJob,
+	} {
+		if !s.IsNull() {
+			t.Errorf("expected %s to be null when AssociationMax is nil, got %v", name, s)
+		}
+	}
+	if diags.HasError() {
+		t.Errorf("unexpected diagnostics: %v", diags)
+	}
+}
+
+func TestSnapshotAssocMaxTRES_NilTRESInsideMaxAllNullSets(t *testing.T) {
+	ctx := context.Background()
+	var diags diag.Diagnostics
+	snap := snapshotAssocMaxTRES(ctx, &client.AssociationMax{}, &diags)
+	if !snap.GrpTotal.IsNull() || !snap.GrpMins.IsNull() || !snap.GrpRunMins.IsNull() ||
+		!snap.MaxPerJob.IsNull() || !snap.MaxPerNode.IsNull() || !snap.MaxMinsPerJob.IsNull() {
+		t.Error("expected all snapshot fields to be null when Max.TRES is nil")
+	}
+}
+
+func TestSnapshotAssocMaxTRES_AllPathsPopulated(t *testing.T) {
+	ctx := context.Background()
+	var diags diag.Diagnostics
+	max := &client.AssociationMax{
+		TRES: &client.AssociationMaxTRES{
+			Total: []client.TRES{{Type: "cpu", Count: 256}},
+			Group: &client.AssociationMaxTRESGroup{
+				Minutes: []client.TRES{{Type: "cpu", Count: 153600}},
+				Active:  []client.TRES{{Type: "cpu", Count: 76800}},
+			},
+			Per: &client.AssociationMaxTRESPer{
+				Job:  []client.TRES{{Type: "cpu", Count: 8}},
+				Node: []client.TRES{{Type: "cpu", Count: 4}},
+			},
+			Minutes: &client.AssociationMaxTRESMins{
+				Per: &client.AssociationMaxTRESMinsPer{
+					Job: []client.TRES{{Type: "cpu", Count: 480}},
+				},
+			},
+		},
+	}
+	snap := snapshotAssocMaxTRES(ctx, max, &diags)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	for name, s := range map[string]types.Set{
+		"GrpTotal":      snap.GrpTotal,
+		"GrpMins":       snap.GrpMins,
+		"GrpRunMins":    snap.GrpRunMins,
+		"MaxPerJob":     snap.MaxPerJob,
+		"MaxPerNode":    snap.MaxPerNode,
+		"MaxMinsPerJob": snap.MaxMinsPerJob,
+	} {
+		if s.IsNull() {
+			t.Errorf("expected %s to be non-null", name)
+		}
+		if l := len(s.Elements()); l != 1 {
+			t.Errorf("%s: expected 1 element, got %d", name, l)
+		}
+	}
+}
+
+func TestSnapshotAssocMaxTRES_PartialPopulation(t *testing.T) {
+	// Only one field populated — others must remain null.
+	ctx := context.Background()
+	var diags diag.Diagnostics
+	max := &client.AssociationMax{
+		TRES: &client.AssociationMaxTRES{
+			Total: []client.TRES{{Type: "cpu", Count: 100}},
+		},
+	}
+	snap := snapshotAssocMaxTRES(ctx, max, &diags)
+	if snap.GrpTotal.IsNull() {
+		t.Error("expected GrpTotal to be non-null")
+	}
+	if !snap.GrpMins.IsNull() || !snap.GrpRunMins.IsNull() ||
+		!snap.MaxPerJob.IsNull() || !snap.MaxPerNode.IsNull() || !snap.MaxMinsPerJob.IsNull() {
+		t.Error("expected unmentioned fields to remain null")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// buildAssocMaxTRES — null/unknown inputs and edge cases beyond what the
+// account_model_test.go suite already covers.
+// ---------------------------------------------------------------------------
+
+func TestBuildAssocMaxTRES_NilWhenAllSetsAreNull(t *testing.T) {
+	ctx := context.Background()
+	null := types.SetNull(tresElemType())
+	if got := buildAssocMaxTRES(ctx, null, null, null, null, null, null); got != nil {
+		t.Errorf("expected nil for all-null input, got %#v", got)
+	}
+}
+
+func TestBuildAssocMaxTRES_NilWhenAllSetsAreUnknown(t *testing.T) {
+	ctx := context.Background()
+	unk := types.SetUnknown(tresElemType())
+	if got := buildAssocMaxTRES(ctx, unk, unk, unk, unk, unk, unk); got != nil {
+		t.Errorf("expected nil for all-unknown input, got %#v", got)
 	}
 }
 

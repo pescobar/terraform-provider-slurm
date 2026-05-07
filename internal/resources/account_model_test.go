@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/pescobar/terraform-provider-slurm/internal/client"
@@ -32,34 +31,37 @@ func emptyAccountModel(name string) accountResourceModel {
 	}
 }
 
+// buildAssocMaxTRESFromAccountModel is a thin test wrapper that lets the
+// existing TRES-from-account-model tests exercise the shared helper without
+// having to spell out all six attributes at every call site.
+func buildAssocMaxTRESFromAccountModel(ctx context.Context, m accountResourceModel) *client.AssociationMaxTRES {
+	return buildAssocMaxTRES(ctx,
+		m.MaxTRESPerJob, m.MaxTRESPerNode, m.MaxTRESMinsPerJob,
+		m.GrpTRES, m.GrpTRESMins, m.GrpTRESRunMins,
+	)
+}
+
 // ============================================================================
-// extractAccountTRESMax
+// buildAssocMaxTRES — exercised via the account model so we cover the same
+// six fields slurm_account uses (slurm_user shares the same helper).
 // ============================================================================
 
-func TestExtractAccountTRESMax_NilWhenAllNull(t *testing.T) {
-	r := &accountResource{}
+func TestBuildAssocMaxTRES_FromAccount_NilWhenAllNull(t *testing.T) {
 	ctx := context.Background()
 	m := emptyAccountModel("acct")
-	var diags diag.Diagnostics
-	result := r.extractAccountTRESMax(ctx, m, &diags)
-	if result != nil {
-		t.Error("expected nil when all TRES fields are null")
-	}
-	if diags.HasError() {
-		t.Errorf("unexpected diagnostics: %v", diags)
+	if result := buildAssocMaxTRESFromAccountModel(ctx, m); result != nil {
+		t.Errorf("expected nil when all TRES fields are null, got %#v", result)
 	}
 }
 
-func TestExtractAccountTRESMax_MaxTRESPerJob(t *testing.T) {
-	r := &accountResource{}
+func TestBuildAssocMaxTRES_FromAccount_MaxTRESPerJob(t *testing.T) {
 	ctx := context.Background()
 	m := emptyAccountModel("acct")
 	m.MaxTRESPerJob = buildTRESSet(t, []client.TRES{
 		{Type: "cpu", Count: 32},
 		{Type: "mem", Count: 65536},
 	})
-	var diags diag.Diagnostics
-	result := r.extractAccountTRESMax(ctx, m, &diags)
+	result := buildAssocMaxTRESFromAccountModel(ctx, m)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -68,15 +70,13 @@ func TestExtractAccountTRESMax_MaxTRESPerJob(t *testing.T) {
 	}
 }
 
-func TestExtractAccountTRESMax_MaxTRESPerNode(t *testing.T) {
-	r := &accountResource{}
+func TestBuildAssocMaxTRES_FromAccount_MaxTRESPerNode(t *testing.T) {
 	ctx := context.Background()
 	m := emptyAccountModel("acct")
 	m.MaxTRESPerNode = buildTRESSet(t, []client.TRES{
 		{Type: "gres", Name: "gpu", Count: 4},
 	})
-	var diags diag.Diagnostics
-	result := r.extractAccountTRESMax(ctx, m, &diags)
+	result := buildAssocMaxTRESFromAccountModel(ctx, m)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -88,15 +88,13 @@ func TestExtractAccountTRESMax_MaxTRESPerNode(t *testing.T) {
 	}
 }
 
-func TestExtractAccountTRESMax_MaxTRESMinsPerJob(t *testing.T) {
-	r := &accountResource{}
+func TestBuildAssocMaxTRES_FromAccount_MaxTRESMinsPerJob(t *testing.T) {
 	ctx := context.Background()
 	m := emptyAccountModel("acct")
 	m.MaxTRESMinsPerJob = buildTRESSet(t, []client.TRES{
 		{Type: "cpu", Count: 480},
 	})
-	var diags diag.Diagnostics
-	result := r.extractAccountTRESMax(ctx, m, &diags)
+	result := buildAssocMaxTRESFromAccountModel(ctx, m)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -108,15 +106,13 @@ func TestExtractAccountTRESMax_MaxTRESMinsPerJob(t *testing.T) {
 	}
 }
 
-func TestExtractAccountTRESMax_GrpTRES(t *testing.T) {
-	r := &accountResource{}
+func TestBuildAssocMaxTRES_FromAccount_GrpTRES(t *testing.T) {
 	ctx := context.Background()
 	m := emptyAccountModel("acct")
 	m.GrpTRES = buildTRESSet(t, []client.TRES{
 		{Type: "cpu", Count: 256},
 	})
-	var diags diag.Diagnostics
-	result := r.extractAccountTRESMax(ctx, m, &diags)
+	result := buildAssocMaxTRESFromAccountModel(ctx, m)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -128,15 +124,13 @@ func TestExtractAccountTRESMax_GrpTRES(t *testing.T) {
 	}
 }
 
-func TestExtractAccountTRESMax_GrpTRESMins(t *testing.T) {
-	r := &accountResource{}
+func TestBuildAssocMaxTRES_FromAccount_GrpTRESMins(t *testing.T) {
 	ctx := context.Background()
 	m := emptyAccountModel("acct")
 	m.GrpTRESMins = buildTRESSet(t, []client.TRES{
 		{Type: "cpu", Count: 153600},
 	})
-	var diags diag.Diagnostics
-	result := r.extractAccountTRESMax(ctx, m, &diags)
+	result := buildAssocMaxTRESFromAccountModel(ctx, m)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -148,15 +142,13 @@ func TestExtractAccountTRESMax_GrpTRESMins(t *testing.T) {
 	}
 }
 
-func TestExtractAccountTRESMax_GrpTRESRunMins(t *testing.T) {
-	r := &accountResource{}
+func TestBuildAssocMaxTRES_FromAccount_GrpTRESRunMins(t *testing.T) {
 	ctx := context.Background()
 	m := emptyAccountModel("acct")
 	m.GrpTRESRunMins = buildTRESSet(t, []client.TRES{
 		{Type: "cpu", Count: 76800},
 	})
-	var diags diag.Diagnostics
-	result := r.extractAccountTRESMax(ctx, m, &diags)
+	result := buildAssocMaxTRESFromAccountModel(ctx, m)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -168,8 +160,7 @@ func TestExtractAccountTRESMax_GrpTRESRunMins(t *testing.T) {
 	}
 }
 
-func TestExtractAccountTRESMax_AllFields(t *testing.T) {
-	r := &accountResource{}
+func TestBuildAssocMaxTRES_FromAccount_AllFields(t *testing.T) {
 	ctx := context.Background()
 	m := emptyAccountModel("acct")
 	m.MaxTRESPerJob = buildTRESSet(t, []client.TRES{{Type: "cpu", Count: 8}})
@@ -178,8 +169,7 @@ func TestExtractAccountTRESMax_AllFields(t *testing.T) {
 	m.GrpTRES = buildTRESSet(t, []client.TRES{{Type: "cpu", Count: 256}})
 	m.GrpTRESMins = buildTRESSet(t, []client.TRES{{Type: "cpu", Count: 153600}})
 	m.GrpTRESRunMins = buildTRESSet(t, []client.TRES{{Type: "cpu", Count: 76800}})
-	var diags diag.Diagnostics
-	result := r.extractAccountTRESMax(ctx, m, &diags)
+	result := buildAssocMaxTRESFromAccountModel(ctx, m)
 	if result == nil {
 		t.Fatal("expected non-nil result for model with all TRES fields set")
 	}
@@ -203,16 +193,14 @@ func TestExtractAccountTRESMax_AllFields(t *testing.T) {
 	}
 }
 
-func TestExtractAccountTRESMax_PerAndGrpShareGroupStruct(t *testing.T) {
+func TestBuildAssocMaxTRES_FromAccount_PerAndGrpShareGroupStruct(t *testing.T) {
 	// GrpTRESMins and GrpTRESRunMins share the same Group sub-struct;
 	// verify that setting both doesn't clobber either.
-	r := &accountResource{}
 	ctx := context.Background()
 	m := emptyAccountModel("acct")
 	m.GrpTRESMins = buildTRESSet(t, []client.TRES{{Type: "cpu", Count: 1000}})
 	m.GrpTRESRunMins = buildTRESSet(t, []client.TRES{{Type: "cpu", Count: 500}})
-	var diags diag.Diagnostics
-	result := r.extractAccountTRESMax(ctx, m, &diags)
+	result := buildAssocMaxTRESFromAccountModel(ctx, m)
 	if result == nil || result.Group == nil {
 		t.Fatal("expected non-nil group")
 	}
@@ -224,16 +212,14 @@ func TestExtractAccountTRESMax_PerAndGrpShareGroupStruct(t *testing.T) {
 	}
 }
 
-func TestExtractAccountTRESMax_MaxTRESPerJobAndPerNodeSharePerStruct(t *testing.T) {
+func TestBuildAssocMaxTRES_FromAccount_MaxTRESPerJobAndPerNodeSharePerStruct(t *testing.T) {
 	// MaxTRESPerJob and MaxTRESPerNode share the same Per sub-struct;
 	// verify that setting both doesn't clobber either.
-	r := &accountResource{}
 	ctx := context.Background()
 	m := emptyAccountModel("acct")
 	m.MaxTRESPerJob = buildTRESSet(t, []client.TRES{{Type: "cpu", Count: 64}})
 	m.MaxTRESPerNode = buildTRESSet(t, []client.TRES{{Type: "cpu", Count: 16}})
-	var diags diag.Diagnostics
-	result := r.extractAccountTRESMax(ctx, m, &diags)
+	result := buildAssocMaxTRESFromAccountModel(ctx, m)
 	if result == nil || result.Per == nil {
 		t.Fatal("expected non-nil per")
 	}
