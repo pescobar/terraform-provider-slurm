@@ -2,11 +2,9 @@ package resources
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -112,18 +110,9 @@ func (r *accountResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 }
 
 func (r *accountResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	if c := configureClient(req, resp); c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -154,9 +143,8 @@ func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest
 	assocSet := &client.AssocRecSet{}
 	hasLimits := false
 
-	if !plan.Fairshare.IsNull() && !plan.Fairshare.IsUnknown() {
-		v := int(plan.Fairshare.ValueInt64())
-		assocSet.Fairshare = &v
+	if v := intPtrFromInt64(plan.Fairshare); v != nil {
+		assocSet.Fairshare = v
 		hasLimits = true
 	}
 	if !plan.DefaultQOS.IsNull() && !plan.DefaultQOS.IsUnknown() {
@@ -173,11 +161,8 @@ func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest
 		assocSet.QOSLevel = qosList
 		hasLimits = true
 	}
-	if !plan.MaxJobs.IsNull() && !plan.MaxJobs.IsUnknown() {
-		assocSet.MaxJobs = &client.SlurmInt{
-			Number: int(plan.MaxJobs.ValueInt64()),
-			Set:    true,
-		}
+	if v := slurmIntFromInt64(plan.MaxJobs); v != nil {
+		assocSet.MaxJobs = v
 		hasLimits = true
 	}
 
@@ -370,9 +355,8 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 	hasLimits := false
 
-	if !plan.Fairshare.IsNull() {
-		v := int(plan.Fairshare.ValueInt64())
-		assoc.SharesRaw = &v
+	if v := intPtrFromInt64(plan.Fairshare); v != nil {
+		assoc.SharesRaw = v
 		hasLimits = true
 	}
 	if !plan.DefaultQOS.IsNull() {
@@ -389,11 +373,9 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 		assoc.QOS = qosList
 		hasLimits = true
 	}
-	if !plan.MaxJobs.IsNull() {
+	if v := slurmIntFromInt64(plan.MaxJobs); v != nil {
 		assoc.Max = &client.AssociationMax{
-			Jobs: &client.AssociationMaxJobs{
-				Active: &client.SlurmInt{Number: int(plan.MaxJobs.ValueInt64()), Set: true},
-			},
+			Jobs: &client.AssociationMaxJobs{Active: v},
 		}
 		hasLimits = true
 	}
@@ -440,8 +422,7 @@ func (r *accountResource) Delete(ctx context.Context, req resource.DeleteRequest
 }
 
 func (r *accountResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), req.ID)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+	importStateByName(ctx, req, resp)
 }
 
 // extractAccountTRESMax builds the TRES portion of AssociationMax from the plan.

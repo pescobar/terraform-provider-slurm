@@ -7,7 +7,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -270,18 +269,9 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 }
 
 func (r *userResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	if c := configureClient(req, resp); c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 // Create creates the user and all its associations.
@@ -649,8 +639,7 @@ func (r *userResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 
 // ImportState imports an existing user by name.
 func (r *userResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), req.ID)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+	importStateByName(ctx, req, resp)
 }
 
 // ---------------------------------------------------------------------------
@@ -685,14 +674,8 @@ func (r *userResource) extractAssociations(ctx context.Context, model userResour
 			a.Partition = am.Partition.ValueString()
 		}
 
-		if !am.Fairshare.IsNull() && !am.Fairshare.IsUnknown() {
-			v := int(am.Fairshare.ValueInt64())
-			a.SharesRaw = &v
-		}
-
-		if !am.Priority.IsNull() && !am.Priority.IsUnknown() {
-			a.Priority = &client.SlurmInt{Number: int(am.Priority.ValueInt64()), Set: true}
-		}
+		a.SharesRaw = intPtrFromInt64(am.Fairshare)
+		a.Priority = slurmIntFromInt64(am.Priority)
 
 		// Default settings
 		if !am.DefaultQOS.IsNull() && !am.DefaultQOS.IsUnknown() {
@@ -741,43 +724,21 @@ func (r *userResource) extractAssocMax(ctx context.Context, am associationModel,
 	set := false
 
 	// ---- max.jobs ----
-	var jobs client.AssociationMaxJobs
-	var jobsPer client.AssociationMaxJobsPer
-	jobsSet, jobsPerSet := false, false
-
-	if !am.MaxJobs.IsNull() && !am.MaxJobs.IsUnknown() {
-		jobs.Active = &client.SlurmInt{Number: int(am.MaxJobs.ValueInt64()), Set: true}
-		jobsSet = true
+	jobs := client.AssociationMaxJobs{
+		Active:   slurmIntFromInt64(am.MaxJobs),
+		Accruing: slurmIntFromInt64(am.MaxJobsAccrue),
+		Total:    slurmIntFromInt64(am.MaxSubmitJobs),
 	}
-	if !am.MaxJobsAccrue.IsNull() && !am.MaxJobsAccrue.IsUnknown() {
-		jobs.Accruing = &client.SlurmInt{Number: int(am.MaxJobsAccrue.ValueInt64()), Set: true}
-		jobsSet = true
+	jobsPer := client.AssociationMaxJobsPer{
+		WallClock: slurmIntFromInt64(am.MaxWallPJ),
+		Count:     slurmIntFromInt64(am.GrpJobs),
+		Accruing:  slurmIntFromInt64(am.GrpJobsAccrue),
+		Submitted: slurmIntFromInt64(am.GrpSubmitJobs),
 	}
-	if !am.MaxSubmitJobs.IsNull() && !am.MaxSubmitJobs.IsUnknown() {
-		jobs.Total = &client.SlurmInt{Number: int(am.MaxSubmitJobs.ValueInt64()), Set: true}
-		jobsSet = true
-	}
-	if !am.MaxWallPJ.IsNull() && !am.MaxWallPJ.IsUnknown() {
-		jobsPer.WallClock = &client.SlurmInt{Number: int(am.MaxWallPJ.ValueInt64()), Set: true}
-		jobsPerSet = true
-	}
-	if !am.GrpJobs.IsNull() && !am.GrpJobs.IsUnknown() {
-		jobsPer.Count = &client.SlurmInt{Number: int(am.GrpJobs.ValueInt64()), Set: true}
-		jobsPerSet = true
-	}
-	if !am.GrpJobsAccrue.IsNull() && !am.GrpJobsAccrue.IsUnknown() {
-		jobsPer.Accruing = &client.SlurmInt{Number: int(am.GrpJobsAccrue.ValueInt64()), Set: true}
-		jobsPerSet = true
-	}
-	if !am.GrpSubmitJobs.IsNull() && !am.GrpSubmitJobs.IsUnknown() {
-		jobsPer.Submitted = &client.SlurmInt{Number: int(am.GrpSubmitJobs.ValueInt64()), Set: true}
-		jobsPerSet = true
-	}
-	if jobsPerSet {
+	if jobsPer != (client.AssociationMaxJobsPer{}) {
 		jobs.Per = &jobsPer
-		jobsSet = true
 	}
-	if jobsSet {
+	if jobs != (client.AssociationMaxJobs{}) {
 		m.Jobs = &jobs
 		set = true
 	}
@@ -848,11 +809,9 @@ func (r *userResource) extractAssocMax(ctx context.Context, am associationModel,
 	}
 
 	// ---- max.per.account.wall_clock (GrpWall) ----
-	if !am.GrpWall.IsNull() && !am.GrpWall.IsUnknown() {
+	if v := slurmIntFromInt64(am.GrpWall); v != nil {
 		m.Per = &client.AssociationMaxPerNode{
-			Account: &client.AssociationMaxPerAccount{
-				WallClock: &client.SlurmInt{Number: int(am.GrpWall.ValueInt64()), Set: true},
-			},
+			Account: &client.AssociationMaxPerAccount{WallClock: v},
 		}
 		set = true
 	}

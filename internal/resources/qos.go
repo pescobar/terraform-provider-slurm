@@ -6,7 +6,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
@@ -317,18 +316,9 @@ func (r *qosResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 }
 
 func (r *qosResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	if c := configureClient(req, resp); c != nil {
+		r.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
-		)
-		return
-	}
-	r.client = c
 }
 
 func (r *qosResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -595,8 +585,7 @@ func (r *qosResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 }
 
 func (r *qosResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), req.ID)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+	importStateByName(ctx, req, resp)
 }
 
 // modelToAPI converts the Terraform model to the Slurm API QOS struct.
@@ -633,9 +622,7 @@ func (r *qosResource) modelToAPI(ctx context.Context, m qosResourceModel) client
 	if !m.Description.IsNull() && !m.Description.IsUnknown() {
 		qos.Description = m.Description.ValueString()
 	}
-	if !m.Priority.IsNull() && !m.Priority.IsUnknown() {
-		qos.Priority = &client.SlurmInt{Number: int(m.Priority.ValueInt64()), Set: true}
-	}
+	qos.Priority = slurmIntFromInt64(m.Priority)
 	if !m.UsageFactor.IsNull() && !m.UsageFactor.IsUnknown() {
 		qos.UsageFactor = &client.SlurmFloat{Number: float64(m.UsageFactor.ValueInt64()), Set: true}
 	}
@@ -661,12 +648,7 @@ func (r *qosResource) modelToAPI(ctx context.Context, m qosResourceModel) client
 		if !m.PreemptMode.IsNull() && !m.PreemptMode.IsUnknown() {
 			m.PreemptMode.ElementsAs(ctx, &qos.Preempt.Mode, false)
 		}
-		if !m.PreemptExemptTime.IsNull() && !m.PreemptExemptTime.IsUnknown() {
-			qos.Preempt.ExemptTime = &client.SlurmInt{
-				Number: int(m.PreemptExemptTime.ValueInt64()),
-				Set:    true,
-			}
-		}
+		qos.Preempt.ExemptTime = slurmIntFromInt64(m.PreemptExemptTime)
 	}
 
 	// Build limits only when at least one limit field is set.
@@ -703,20 +685,12 @@ func (r *qosResource) modelToAPI(ctx context.Context, m qosResourceModel) client
 			max := qos.Limits.Max
 
 			// Wall clock limits
-			needsWall := !m.MaxWallPJ.IsNull() || !m.GrpWall.IsNull()
-			if needsWall {
-				max.WallClock = &client.QOSWallClock{Per: &client.QOSWallClockPer{}}
-				if !m.MaxWallPJ.IsNull() && !m.MaxWallPJ.IsUnknown() {
-					max.WallClock.Per.Job = &client.SlurmInt{
-						Number: int(m.MaxWallPJ.ValueInt64()),
-						Set:    true,
-					}
-				}
-				if !m.GrpWall.IsNull() && !m.GrpWall.IsUnknown() {
-					max.WallClock.Per.QOS = &client.SlurmInt{
-						Number: int(m.GrpWall.ValueInt64()),
-						Set:    true,
-					}
+			if !m.MaxWallPJ.IsNull() || !m.GrpWall.IsNull() {
+				max.WallClock = &client.QOSWallClock{
+					Per: &client.QOSWallClockPer{
+						Job: slurmIntFromInt64(m.MaxWallPJ),
+						QOS: slurmIntFromInt64(m.GrpWall),
+					},
 				}
 			}
 
@@ -751,33 +725,26 @@ func (r *qosResource) modelToAPI(ctx context.Context, m qosResourceModel) client
 				!m.MaxJobsPerAccount.IsNull() ||
 				!m.MaxSubmitJobsPerUser.IsNull() || !m.MaxSubmitJobsPerAccount.IsNull()
 			if needsJobs {
-				max.Jobs = &client.QOSJobs{}
-				if !m.GrpJobs.IsNull() && !m.GrpJobs.IsUnknown() {
-					max.Jobs.Count = &client.SlurmInt{Number: int(m.GrpJobs.ValueInt64()), Set: true}
+				max.Jobs = &client.QOSJobs{
+					Count: slurmIntFromInt64(m.GrpJobs),
 				}
 				if !m.MaxJobsPerUser.IsNull() || !m.MaxJobsPerAccount.IsNull() {
-					max.Jobs.Per = &client.QOSJobsPer{}
-					if !m.MaxJobsPerUser.IsNull() && !m.MaxJobsPerUser.IsUnknown() {
-						max.Jobs.Per.User = &client.SlurmInt{Number: int(m.MaxJobsPerUser.ValueInt64()), Set: true}
-					}
-					if !m.MaxJobsPerAccount.IsNull() && !m.MaxJobsPerAccount.IsUnknown() {
-						max.Jobs.Per.Account = &client.SlurmInt{Number: int(m.MaxJobsPerAccount.ValueInt64()), Set: true}
+					max.Jobs.Per = &client.QOSJobsPer{
+						User:    slurmIntFromInt64(m.MaxJobsPerUser),
+						Account: slurmIntFromInt64(m.MaxJobsPerAccount),
 					}
 				}
 				if !m.MaxSubmitJobsPerUser.IsNull() || !m.MaxSubmitJobsPerAccount.IsNull() {
-					max.Jobs.ActiveJobs = &client.QOSJobsActiveJobs{Per: &client.QOSJobsActiveJobsPer{}}
-					if !m.MaxSubmitJobsPerUser.IsNull() && !m.MaxSubmitJobsPerUser.IsUnknown() {
-						max.Jobs.ActiveJobs.Per.User = &client.SlurmInt{Number: int(m.MaxSubmitJobsPerUser.ValueInt64()), Set: true}
-					}
-					if !m.MaxSubmitJobsPerAccount.IsNull() && !m.MaxSubmitJobsPerAccount.IsUnknown() {
-						max.Jobs.ActiveJobs.Per.Account = &client.SlurmInt{Number: int(m.MaxSubmitJobsPerAccount.ValueInt64()), Set: true}
+					max.Jobs.ActiveJobs = &client.QOSJobsActiveJobs{
+						Per: &client.QOSJobsActiveJobsPer{
+							User:    slurmIntFromInt64(m.MaxSubmitJobsPerUser),
+							Account: slurmIntFromInt64(m.MaxSubmitJobsPerAccount),
+						},
 					}
 				}
 			}
-			if !m.GrpSubmitJobs.IsNull() && !m.GrpSubmitJobs.IsUnknown() {
-				max.ActiveJobs = &client.QOSActiveJobs{
-					Count: &client.SlurmInt{Number: int(m.GrpSubmitJobs.ValueInt64()), Set: true},
-				}
+			if v := slurmIntFromInt64(m.GrpSubmitJobs); v != nil {
+				max.ActiveJobs = &client.QOSActiveJobs{Count: v}
 			}
 		}
 
