@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -21,8 +22,9 @@ import (
 )
 
 var (
-	_ resource.Resource                = &userResource{}
-	_ resource.ResourceWithImportState = &userResource{}
+	_ resource.Resource                   = &userResource{}
+	_ resource.ResourceWithImportState    = &userResource{}
+	_ resource.ResourceWithValidateConfig = &userResource{}
 )
 
 type userResource struct {
@@ -288,6 +290,87 @@ func (r *userResource) Configure(_ context.Context, req resource.ConfigureReques
 	if c := configureClient(req, resp); c != nil {
 		r.client = c
 	}
+}
+
+// ValidateConfig surfaces two cross-field invariants at plan time so users see
+// them in `tofu plan` rather than as opaque API errors during apply:
+//
+//   - at least one association block must be declared
+//   - default_account must equal one of the association accounts
+//
+// Either check is skipped when its inputs reference values still unknown at
+// plan time (e.g. computed account names). The matching runtime checks in
+// Create and Update remain as a backstop for that case.
+func (r *userResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var cfg userResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfg)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var assocModels []associationModel
+	if !cfg.Associations.IsNull() && !cfg.Associations.IsUnknown() {
+		resp.Diagnostics.Append(cfg.Associations.ElementsAs(ctx, &assocModels, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
+	for _, e := range validateUserConfigInvariants(
+		cfg.Associations.IsNull(), cfg.Associations.IsUnknown(),
+		assocModels, cfg.DefaultAccount,
+	) {
+		resp.Diagnostics.AddAttributeError(e.Path, e.Summary, e.Detail)
+	}
+}
+
+// userConfigError is the structured form of a ValidateConfig diagnostic so the
+// pure invariant logic stays testable without constructing a tfsdk.Config.
+type userConfigError struct {
+	Path    path.Path
+	Summary string
+	Detail  string
+}
+
+func validateUserConfigInvariants(
+	assocsNull, assocsUnknown bool,
+	assocs []associationModel,
+	defaultAccount types.String,
+) []userConfigError {
+	if assocsNull || (!assocsUnknown && len(assocs) == 0) {
+		return []userConfigError{{
+			Path:    path.Root("association"),
+			Summary: "At least one association block is required",
+			Detail:  "A slurm_user must declare at least one `association` block specifying the user's account, partition, and limits.",
+		}}
+	}
+	if assocsUnknown {
+		return nil
+	}
+	if defaultAccount.IsNull() || defaultAccount.IsUnknown() {
+		return nil
+	}
+	want := defaultAccount.ValueString()
+	for _, am := range assocs {
+		if am.Account.IsUnknown() {
+			// At least one account is computed — defer the check to apply
+			// where the runtime backstop in Create/Update enforces the same
+			// invariant once the value is known.
+			return nil
+		}
+		if am.Account.ValueString() == want {
+			return nil
+		}
+	}
+	return []userConfigError{{
+		Path:    path.Root("default_account"),
+		Summary: "default_account must match one of the association account values",
+		Detail: fmt.Sprintf(
+			"default_account is set to %q but no association block declares account = %q. "+
+				"Add an association block for that account, or change default_account to one already declared.",
+			want, want,
+		),
+	}}
 }
 
 // Create creates the user and all its associations.

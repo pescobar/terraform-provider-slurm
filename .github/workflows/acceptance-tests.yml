@@ -317,24 +317,27 @@ jobs:
             echo "FAIL: expected tofu plan to fail but it succeeded — a validator regressed"
             exit 1
           fi
-          # Count distinct validator diagnostics. Framework emits "Invalid
-          # Attribute Value" for OneOf and "Invalid Attribute Value Match" /
-          # "Invalid Attribute Value Length" variants for the int validators.
-          # Either phrasing satisfies us; we just need eight distinct ones.
-          diag_count=$(echo "$output" | grep -cE "Invalid Attribute Value")
-          if [ "$diag_count" -lt 8 ]; then
-            echo "FAIL: expected 8 validator diagnostics, got $diag_count"
+          # Count distinct error diagnostics. Each plan-time error renders
+          # with one "Error:" title line; this pattern catches both schema
+          # validator messages ("Invalid Attribute Value" / "...Match") and
+          # the slurm_user ValidateConfig cross-field messages.
+          diag_count=$(echo "$output" | grep -cE "^[│┃]?[[:space:]]*Error:")
+          if [ "$diag_count" -lt 10 ]; then
+            echo "FAIL: expected 10 plan-time error diagnostics, got $diag_count"
             exit 1
           fi
-          # Spot-check a representative diagnostic from each validator class so
-          # a regression that silently swaps one error for another is caught.
-          for needle in "fairshare" "max_jobs" "admin_level" "flags" "preempt_mode" "priority" "count"; do
+          # Spot-check a representative diagnostic from each validator class
+          # so a regression that silently swaps one error for another is
+          # caught instead of being absorbed by the count.
+          for needle in "fairshare" "max_jobs" "admin_level" "flags" "preempt_mode" "priority" "count" \
+                        "At least one association block is required" \
+                        "default_account must match one of the association"; do
             if ! echo "$output" | grep -qF "$needle"; then
               echo "FAIL: expected a diagnostic mentioning '$needle' but found none"
               exit 1
             fi
           done
-          echo "PASS: all 8 plan-time validator violations were correctly rejected"
+          echo "PASS: all 10 plan-time validator violations were correctly rejected"
 
       - name: Run QOS acceptance tests (all attributes + import verification)
         env:

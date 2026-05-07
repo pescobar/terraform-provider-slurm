@@ -81,6 +81,25 @@ resource "slurm_user" "neg_assoc_max_jobs" {
   }
 }
 
+# slurm_user with no association blocks at all — expect
+# "At least one association block is required" from ValidateConfig.
+resource "slurm_user" "neg_no_assoc" {
+  name            = "neg_no_assoc"
+  default_account = "neg_acct"
+}
+
+# default_account references an account that no association declares — expect
+# "default_account must match one of the association account values" from
+# ValidateConfig.
+resource "slurm_user" "neg_default_mismatch" {
+  name            = "neg_mismatch"
+  default_account = "missing_acct"
+
+  association {
+    account = "neg_acct"
+  }
+}
+
 # ============================================================================
 # slurm_qos — flags OneOf, preempt_mode OneOf, AtLeast(0) on numeric, TRES
 # count AtLeast(0)

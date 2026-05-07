@@ -22,6 +22,8 @@ tofu plan -var "slurm_token=$TOKEN"
 | `slurm_account.neg_max_jobs` | `max_jobs = -1` | `AtLeast(0)` |
 | `slurm_user.neg_admin_level` | `admin_level = "Sudo"` | `OneOf("None","Operator","Administrator")` |
 | `slurm_user.neg_assoc_max_jobs` | `association { max_jobs = -10 }` | `AtLeast(0)` (nested in block) |
+| `slurm_user.neg_no_assoc` | no `association` block | `ValidateConfig` cross-field |
+| `slurm_user.neg_default_mismatch` | `default_account` not in any `association` | `ValidateConfig` cross-field |
 | `slurm_qos.neg_flags` | `flags = ["MADE_UP_FLAG"]` | `OneOf(qosFlagValues...)` |
 | `slurm_qos.neg_preempt_mode` | `preempt_mode = ["panic"]` | `OneOf(qosPreemptModeValues...)` |
 | `slurm_qos.neg_priority` | `priority = -1` | `AtLeast(0)` |
@@ -29,9 +31,10 @@ tofu plan -var "slurm_token=$TOKEN"
 
 ## Pass criteria
 
-`tofu plan` exits non-zero and prints **eight** "Invalid Attribute Value" /
-"Invalid Attribute Value Match" diagnostics — one per resource. If a
-validator regresses (e.g. is removed from a schema attribute), one of the
-violations would slip through plan and either fail later as an opaque API
-error or apply silently with bad data — both regressions this fixture is
-designed to catch.
+`tofu plan` exits non-zero and prints **ten** error diagnostics — one per
+resource. Eight are framework "Invalid Attribute Value" / "Invalid Attribute
+Value Match" messages from schema validators; the other two are emitted by
+the `slurm_user` `ValidateConfig` cross-field check. If a validator regresses
+(e.g. is removed from a schema attribute), one of the violations would slip
+through plan and either fail later as an opaque API error or apply silently
+with bad data — both regressions this fixture is designed to catch.
