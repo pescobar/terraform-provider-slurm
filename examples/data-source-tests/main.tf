@@ -1,0 +1,95 @@
+// data-source-tests/main.tf
+//
+// End-to-end fixture for the read-only data sources `data.slurm_qos`,
+// `data.slurm_account`, and `data.slurm_user`. Each resource is created
+// alongside a matching data source that reads it back by name; outputs
+// surface key attributes so the CI step can grep for ground-truth values.
+//
+// Run:
+//   cd examples/data-source-tests
+//   tofu apply -auto-approve -var "slurm_token=$SLURM_JWT_TOKEN"
+//   tofu output -json
+//   tofu destroy -auto-approve -var "slurm_token=$SLURM_JWT_TOKEN"
+
+terraform {
+  required_providers {
+    slurm = {
+      source = "pescobar/slurm"
+    }
+  }
+}
+
+provider "slurm" {
+  endpoint    = "http://localhost:6820"
+  token       = var.slurm_token
+  cluster     = "linux"
+  api_version = var.slurm_api_version
+}
+
+variable "slurm_token" {
+  type      = string
+  sensitive = true
+}
+
+variable "slurm_api_version" {
+  type    = string
+  default = "v0.0.42"
+}
+
+# ---------- Managed resources ----------
+
+resource "slurm_qos" "ds_qos" {
+  name        = "ds_qos"
+  description = "QOS exercised by data-source-tests"
+  priority    = 250
+  max_wall_pj = 720
+}
+
+resource "slurm_account" "ds_acct" {
+  name        = "ds_acct"
+  description = "Account exercised by data-source-tests"
+  fairshare   = 4
+  max_jobs    = 50
+}
+
+resource "slurm_user" "ds_user" {
+  name            = "ds_user"
+  default_account = "ds_acct"
+  admin_level     = "Operator"
+
+  association {
+    account   = slurm_account.ds_acct.name
+    fairshare = 7
+    max_jobs  = 12
+  }
+}
+
+# ---------- Data sources reading the resources back ----------
+
+data "slurm_qos" "by_name" {
+  name       = slurm_qos.ds_qos.name
+  depends_on = [slurm_qos.ds_qos]
+}
+
+data "slurm_account" "by_name" {
+  name       = slurm_account.ds_acct.name
+  depends_on = [slurm_account.ds_acct]
+}
+
+data "slurm_user" "by_name" {
+  name       = slurm_user.ds_user.name
+  depends_on = [slurm_user.ds_user]
+}
+
+# ---------- Outputs the CI step asserts on ----------
+
+output "qos_priority" { value = data.slurm_qos.by_name.priority }
+output "qos_max_wall_pj" { value = data.slurm_qos.by_name.max_wall_pj }
+output "qos_description" { value = data.slurm_qos.by_name.description }
+
+output "account_fairshare" { value = data.slurm_account.by_name.fairshare }
+output "account_max_jobs" { value = data.slurm_account.by_name.max_jobs }
+
+output "user_default_account" { value = data.slurm_user.by_name.default_account }
+output "user_admin_level" { value = data.slurm_user.by_name.admin_level }
+output "user_association_count" { value = length(data.slurm_user.by_name.association) }

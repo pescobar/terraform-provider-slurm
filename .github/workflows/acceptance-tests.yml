@@ -341,6 +341,44 @@ jobs:
           done
           echo "PASS: all 10 plan-time validator violations were correctly rejected"
 
+      - name: Run data-source acceptance tests (round-trip via data sources)
+        env:
+          TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
+          TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
+          TF_VAR_slurm_api_version: ${{ matrix.api_version }}
+        run: |
+          cd examples/data-source-tests/
+          # Apply the resources + data sources, then assert each data
+          # source returns the values its matching resource set.
+          tofu apply -auto-approve
+
+          out=$(tofu output -json)
+          echo "$out"
+
+          check() {
+            local key=$1 want=$2
+            got=$(echo "$out" | python3 -c "import json,sys; print(json.load(sys.stdin)['$key']['value'])")
+            if [ "$got" != "$want" ]; then
+              echo "FAIL: $key = $got, want $want"
+              tofu destroy -auto-approve
+              exit 1
+            fi
+          }
+          check qos_priority           250
+          check qos_max_wall_pj        720
+          check qos_description        "QOS exercised by data-source-tests"
+          check account_fairshare      4
+          check account_max_jobs       50
+          check user_default_account   ds_acct
+          check user_admin_level       Operator
+          check user_association_count 1
+          echo "PASS: all 8 data-source attributes round-tripped correctly"
+
+          # Idempotency: a second plan after the apply must show no drift.
+          tofu plan -detailed-exitcode
+
+          tofu destroy -auto-approve
+
       - name: Run system-QOS warning fixture (plan-time, no apply)
         env:
           TF_CLI_CONFIG_FILE: /tmp/dev.tofurc

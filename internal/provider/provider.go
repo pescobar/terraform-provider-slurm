@@ -170,10 +170,15 @@ func (p *slurmProvider) Resources(_ context.Context) []func() resource.Resource 
 	}
 }
 
-// DataSources defines the data sources implemented by this provider.
-// None yet — we can add read-only data sources later.
+// DataSources defines the read-only data sources implemented by this provider.
+// They let HCL reference Slurm entities managed outside Terraform without
+// bringing them under provider management.
 func (p *slurmProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return nil
+	return []func() datasource.DataSource{
+		resources.NewQOSDataSource,
+		resources.NewAccountDataSource,
+		resources.NewUserDataSource,
+	}
 }
 
 // resolveConfigValue returns the HCL-configured value if set, otherwise falls

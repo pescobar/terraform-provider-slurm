@@ -468,7 +468,7 @@ func (r *qosResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	state := r.apiToState(ctx, created, &resp.Diagnostics)
+	state := qosAPIToState(ctx, created, &resp.Diagnostics)
 
 	// The Slurm REST API may not reflect TRES limits in the immediate GET
 	// response after a POST (it may require a second round-trip or the limits
@@ -500,7 +500,7 @@ func (r *qosResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	state := r.apiToState(ctx, qos, &resp.Diagnostics)
+	state := qosAPIToState(ctx, qos, &resp.Diagnostics)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -508,7 +508,9 @@ func (r *qosResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 // apiToState builds a fully-resolved qosResourceModel from a Slurm API QOS
 // object. All Optional+Computed fields not present in the API response are set
 // to their null equivalents so the framework never sees an Unknown value.
-func (r *qosResource) apiToState(ctx context.Context, qos *client.QOS, diags *diag.Diagnostics) qosResourceModel {
+// qosAPIToState converts a Slurm API QOS payload into the Terraform model
+// used by both the slurm_qos resource and the slurm_qos data source.
+func qosAPIToState(ctx context.Context, qos *client.QOS, diags *diag.Diagnostics) qosResourceModel {
 	state := qosResourceModel{
 		ID:          types.StringValue(qos.Name),
 		Name:        types.StringValue(qos.Name),

@@ -328,7 +328,7 @@ func TestModelToAPI_FractionalUsage(t *testing.T) {
 		UsageThreshold: &client.SlurmFloat{Number: 0.1, Set: true},
 	}
 	var diags diag.Diagnostics
-	state := r.apiToState(ctx, apiQOS, &diags)
+	state := qosAPIToState(ctx, apiQOS, &diags)
 	if diags.HasError() {
 		t.Fatalf("apiToState diagnostics: %v", diags)
 	}
