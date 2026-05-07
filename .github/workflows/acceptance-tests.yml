@@ -318,10 +318,12 @@ jobs:
             exit 1
           fi
           # Count distinct error diagnostics. Each plan-time error renders
-          # with one "Error:" title line; this pattern catches both schema
-          # validator messages ("Invalid Attribute Value" / "...Match") and
-          # the slurm_user ValidateConfig cross-field messages.
-          diag_count=$(echo "$output" | grep -cE "^[│┃]?[[:space:]]*Error:")
+          # with one "Error:" title line; an unanchored match handles both
+          # schema validator messages and the slurm_user ValidateConfig
+          # cross-field messages, and stays robust against tofu's ANSI
+          # color codes appearing between the box-drawing prefix and the
+          # word "Error:".
+          diag_count=$(echo "$output" | grep -c "Error:")
           if [ "$diag_count" -lt 10 ]; then
             echo "FAIL: expected 10 plan-time error diagnostics, got $diag_count"
             exit 1
