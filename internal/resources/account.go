@@ -3,11 +3,13 @@ package resources
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
@@ -85,6 +87,7 @@ func (r *accountResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"fairshare": schema.Int64Attribute{
 				Description: "Fairshare value for this account's association.",
 				Optional:    true,
+				Validators:  []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"default_qos": schema.StringAttribute{
 				Description: "Default QOS for this account's association.",
@@ -98,6 +101,7 @@ func (r *accountResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"max_jobs": schema.Int64Attribute{
 				Description: "Maximum number of running jobs for this account's association (inherited by users unless overridden).",
 				Optional:    true,
+				Validators:  []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"max_tres_per_job":      tresOptionalSchemaAttr("Maximum TRES per job for this account's association (MaxTRES)."),
 			"max_tres_per_node":     tresOptionalSchemaAttr("Maximum TRES per node per job for this account's association (MaxTRESPerNode)."),

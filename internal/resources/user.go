@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
@@ -175,6 +178,9 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
+				Validators: []validator.String{
+					stringvalidator.OneOf("None", "Operator", "Administrator"),
+				},
 			},
 			"default_account": schema.StringAttribute{
 				Description: "The user's default Slurm account. Must match one of the association accounts.",
@@ -203,10 +209,12 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 						"fairshare": schema.Int64Attribute{
 							Description: "Fairshare value for this association (default: 1).",
 							Optional:    true,
+							Validators:  []validator.Int64{int64validator.AtLeast(0)},
 						},
 						"priority": schema.Int64Attribute{
 							Description: "Association-level priority (distinct from QOS priority).",
 							Optional:    true,
+							Validators:  []validator.Int64{int64validator.AtLeast(0)},
 						},
 						"default_qos": schema.StringAttribute{
 							Description: "Default QOS for this association.",
@@ -221,19 +229,23 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 						"max_jobs": schema.Int64Attribute{
 							Description: "Maximum number of running jobs for this association (MaxJobs).",
 							Optional:    true,
+							Validators:  []validator.Int64{int64validator.AtLeast(0)},
 						},
 						"max_jobs_accrue": schema.Int64Attribute{
 							Description: "Maximum pending jobs that can accrue age priority (MaxJobsAccrue).",
 							Optional:    true,
+							Validators:  []validator.Int64{int64validator.AtLeast(0)},
 						},
 						"max_submit_jobs": schema.Int64Attribute{
 							Description: "Maximum number of jobs that can be submitted at once (MaxSubmitJobs).",
 							Optional:    true,
+							Validators:  []validator.Int64{int64validator.AtLeast(0)},
 						},
 						// Max wall-clock
 						"max_wall_pj": schema.Int64Attribute{
 							Description: "Maximum wall-clock time per job in minutes (MaxWallDurationPerJob).",
 							Optional:    true,
+							Validators:  []validator.Int64{int64validator.AtLeast(0)},
 						},
 						// Max TRES limits
 						"max_tres_per_job":      tresOptionalSchemaAttr("Maximum TRES per job (MaxTRES). Each entry specifies type, optional name, and count."),
@@ -243,19 +255,23 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 						"grp_jobs": schema.Int64Attribute{
 							Description: "Maximum running jobs across all users in this association group (GrpJobs).",
 							Optional:    true,
+							Validators:  []validator.Int64{int64validator.AtLeast(0)},
 						},
 						"grp_jobs_accrue": schema.Int64Attribute{
 							Description: "Maximum pending jobs accruing priority across the group (GrpJobsAccrue).",
 							Optional:    true,
+							Validators:  []validator.Int64{int64validator.AtLeast(0)},
 						},
 						"grp_submit_jobs": schema.Int64Attribute{
 							Description: "Maximum submitted jobs across the group (GrpSubmitJobs).",
 							Optional:    true,
+							Validators:  []validator.Int64{int64validator.AtLeast(0)},
 						},
 						// Grp wall-clock
 						"grp_wall": schema.Int64Attribute{
 							Description: "Maximum cumulative wall-clock minutes for running jobs in the group (GrpWall).",
 							Optional:    true,
+							Validators:  []validator.Int64{int64validator.AtLeast(0)},
 						},
 						// Grp TRES limits
 						"grp_tres":          tresOptionalSchemaAttr("Maximum TRES in use at once across the group (GrpTRES)."),

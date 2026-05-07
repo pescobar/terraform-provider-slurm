@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -12,11 +15,39 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"github.com/pescobar/terraform-provider-slurm/internal/client"
 )
+
+// Valid QOS flag values accepted by slurmrestd v0.0.42. Sourced from the
+// OpenAPI schema; these are the strings the API exposes (UPPER_SNAKE_CASE).
+var qosFlagValues = []string{
+	"PARTITION_MINIMUM_NODE",
+	"PARTITION_MAXIMUM_NODE",
+	"PARTITION_TIME_LIMIT",
+	"ENFORCE_USAGE_THRESHOLD",
+	"NO_RESERVE",
+	"REQUIRED_RESERVATION",
+	"DENY_LIMIT",
+	"OVERRIDE_PARTITION_QOS",
+	"NO_DECAY",
+	"USAGE_FACTOR_SAFE",
+	"RELATIVE",
+}
+
+// Valid preempt_mode values for a QOS. Slurm also accepts a leading "OFF"
+// (alias for empty/disabled) and the special "WITHIN" mode.
+var qosPreemptModeValues = []string{
+	"OFF",
+	"CANCEL",
+	"GANG",
+	"REQUEUE",
+	"SUSPEND",
+	"WITHIN",
+}
 
 var (
 	_ resource.Resource                = &qosResource{}
@@ -157,6 +188,7 @@ func tresSchemaAttr(description string) schema.SetNestedAttribute {
 				"count": schema.Int64Attribute{
 					Required:    true,
 					Description: "TRES count limit.",
+					Validators:  []validator.Int64{int64validator.AtLeast(0)},
 				},
 			},
 		},
@@ -183,6 +215,7 @@ func tresOptionalSchemaAttr(description string) schema.SetNestedAttribute {
 				"count": schema.Int64Attribute{
 					Required:    true,
 					Description: "TRES count limit.",
+					Validators:  []validator.Int64{int64validator.AtLeast(0)},
 				},
 			},
 		},
@@ -226,18 +259,22 @@ func (r *qosResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 			"priority": schema.Int64Attribute{
 				Description: "Priority value for this QOS (Priority).",
 				Optional:    true,
+				Validators:  []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"max_wall_pj": schema.Int64Attribute{
 				Description: "Maximum wall-clock time per job in minutes (MaxWall).",
 				Optional:    true,
+				Validators:  []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"grp_wall": schema.Int64Attribute{
 				Description: "Maximum total wall-clock time in minutes that all jobs using this QOS can run simultaneously (GrpWall).",
 				Optional:    true,
+				Validators:  []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"grace_time": schema.Int64Attribute{
 				Description: "Grace time in seconds before a job exceeding QOS limits is cancelled (GraceTime).",
 				Optional:    true,
+				Validators:  []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"usage_factor": schema.Int64Attribute{
 				Description: "Factor applied to a job's usage when it runs under this QOS (UsageFactor). Slurm default is 1. Optional+Computed: omitting it from config keeps the current Slurm value.",
@@ -246,6 +283,7 @@ func (r *qosResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.UseStateForUnknown(),
 				},
+				Validators: []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"usage_threshold": schema.Int64Attribute{
 				Description: "Minimum usage factor a user must maintain to submit jobs under this QOS (UsageThres). Optional+Computed: omitting it keeps the current Slurm value.",
@@ -254,41 +292,52 @@ func (r *qosResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.UseStateForUnknown(),
 				},
+				Validators: []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"preempt_exempt_time": schema.Int64Attribute{
 				Description: "Minimum number of seconds a job must run before it can be preempted (PreemptExemptTime).",
 				Optional:    true,
+				Validators:  []validator.Int64{int64validator.AtLeast(0)},
 			},
 			// Job-count limits
 			"grp_jobs": schema.Int64Attribute{
 				Description: "Maximum number of jobs running simultaneously across all users of this QOS (GrpJobs).",
 				Optional:    true,
+				Validators:  []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"grp_submit_jobs": schema.Int64Attribute{
 				Description: "Maximum number of jobs that can be submitted at once across all users of this QOS (GrpSubmit).",
 				Optional:    true,
+				Validators:  []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"max_jobs_per_user": schema.Int64Attribute{
 				Description: "Maximum number of jobs a single user can run simultaneously under this QOS (MaxJobsPU).",
 				Optional:    true,
+				Validators:  []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"max_submit_jobs_per_user": schema.Int64Attribute{
 				Description: "Maximum number of jobs a single user can have submitted under this QOS (MaxSubmitPU).",
 				Optional:    true,
+				Validators:  []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"max_jobs_per_account": schema.Int64Attribute{
 				Description: "Maximum number of jobs an account can run simultaneously under this QOS (MaxJobsPA).",
 				Optional:    true,
+				Validators:  []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"max_submit_jobs_per_account": schema.Int64Attribute{
 				Description: "Maximum number of jobs an account can have submitted under this QOS (MaxSubmitPA).",
 				Optional:    true,
+				Validators:  []validator.Int64{int64validator.AtLeast(0)},
 			},
 			// Sets
 			"flags": schema.SetAttribute{
 				Description: "QOS flags. Values must use the REST API name (UPPER_SNAKE_CASE). Valid values: PARTITION_MINIMUM_NODE, PARTITION_MAXIMUM_NODE, PARTITION_TIME_LIMIT, ENFORCE_USAGE_THRESHOLD, NO_RESERVE, REQUIRED_RESERVATION, DENY_LIMIT, OVERRIDE_PARTITION_QOS, NO_DECAY, USAGE_FACTOR_SAFE, RELATIVE.",
 				Optional:    true,
 				ElementType: types.StringType,
+				Validators: []validator.Set{
+					setvalidator.ValueStringsAre(stringvalidator.OneOf(qosFlagValues...)),
+				},
 			},
 			"preempt_list": schema.SetAttribute{
 				Description: "Set of QOS names that this QOS can preempt (Preempt).",
@@ -296,9 +345,12 @@ func (r *qosResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				ElementType: types.StringType,
 			},
 			"preempt_mode": schema.SetAttribute{
-				Description: "Preemption mode (e.g. CANCEL, REQUEUE) (PreemptMode).",
+				Description: "Preemption mode. Valid values: OFF, CANCEL, GANG, REQUEUE, SUSPEND, WITHIN (PreemptMode).",
 				Optional:    true,
 				ElementType: types.StringType,
+				Validators: []validator.Set{
+					setvalidator.ValueStringsAre(stringvalidator.OneOf(qosPreemptModeValues...)),
+				},
 			},
 			// TRES limits
 			"grp_tres":               tresSchemaAttr("Maximum TRES usable by all jobs in this QOS at any time (GrpTRES)."),
