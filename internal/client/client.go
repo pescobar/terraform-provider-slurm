@@ -7,8 +7,10 @@ package client
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"sync"
@@ -32,6 +34,20 @@ type Client struct {
 	// HTTPClient is the underlying HTTP client
 	HTTPClient *http.Client
 
+	// MaxRetries is the number of retry attempts on transient HTTP failures.
+	// Total attempts = MaxRetries + 1. Only retryable errors (5xx subset,
+	// 408, 429, network-level failures) are retried; deterministic Slurm
+	// rejections (4xx, 200-with-errors) are returned immediately.
+	MaxRetries int
+
+	// RetryBackoff returns the sleep duration before retry attempt n
+	// (1-indexed: n=1 is the first retry). Tests override this to make the
+	// retry loop run instantly.
+	RetryBackoff func(attempt int) time.Duration
+
+	// sleep is indirected for tests.
+	sleep func(time.Duration)
+
 	// deleteMu serializes all delete operations. slurmdbd uses optimistic locking
 	// and returns MySQL error 1020 when concurrent deletes race on cross-row
 	// updates (e.g. QOS preempt references, account association cascades).
@@ -48,7 +64,66 @@ func NewClient(baseURL, token, cluster, apiVersion string) *Client {
 		HTTPClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		MaxRetries:   2, // 3 attempts total
+		RetryBackoff: defaultRetryBackoff,
+		sleep:        time.Sleep,
 	}
+}
+
+// defaultRetryBackoff produces 250ms, 500ms, 1s, 2s, 4s … capped at 5s.
+// No jitter — slurmrestd is single-tenant for a given provider so thundering
+// herd from a tofu apply isn't a real concern, and deterministic timing
+// makes failures easier to reason about in CI logs.
+func defaultRetryBackoff(attempt int) time.Duration {
+	const base = 250 * time.Millisecond
+	const maxDelay = 5 * time.Second
+	if attempt < 1 {
+		return 0
+	}
+	d := base << (attempt - 1)
+	if d > maxDelay || d <= 0 {
+		return maxDelay
+	}
+	return d
+}
+
+// isRetryable returns true when err is a transient failure that is safe to
+// retry. The classifier is intentionally narrow:
+//
+//   - APIError with HTTP 408, 429, 502, 503, 504 → transient gateway/load
+//     issues. Slurm 500 is excluded because slurmrestd uses it for
+//     deterministic user-input errors (e.g. "Missing required field"); a
+//     retry would just amplify the same failure.
+//   - Network-level errors: dial failures, connection resets, EOFs the
+//     server emits when restarting mid-stream. Always safe — none are
+//     deterministic.
+//   - 200-with-errors-in-body Slurm responses → never retried. Those are
+//     application-level rejections (constraint violations, missing parents)
+//     that won't change on the next attempt.
+func isRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.StatusCode {
+		case http.StatusRequestTimeout,
+			http.StatusTooManyRequests,
+			http.StatusBadGateway,
+			http.StatusServiceUnavailable,
+			http.StatusGatewayTimeout:
+			return true
+		}
+		return false
+	}
+	if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	return false
 }
 
 // APIError represents an error returned by the Slurm REST API.
@@ -102,9 +177,12 @@ func (c *Client) slurmdbPath(endpoint string) string {
 	return fmt.Sprintf("/slurmdb/%s/%s", c.APIVersion, endpoint)
 }
 
-// doRequest performs an HTTP request against slurmrestd.
-// It sets the JWT auth header and content type, then checks the response
-// for Slurm-level errors.
+// doRequest performs an HTTP request against slurmrestd, retrying transient
+// failures with exponential backoff (see isRetryable / RetryBackoff).
+// All Slurm POST endpoints we use are idempotent upserts and DELETE on a
+// missing resource is a no-op, so retrying is always safe at the protocol
+// level. The body is marshalled once and replayed from a byte slice so each
+// attempt sends the exact same request.
 func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error) {
 	var jsonBody []byte
 	if body != nil {
@@ -115,6 +193,30 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 		}
 	}
 
+	maxAttempts := c.MaxRetries + 1
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			c.sleep(c.RetryBackoff(attempt))
+		}
+		respBody, err := c.doRequestOnce(method, path, jsonBody)
+		if err == nil {
+			return respBody, nil
+		}
+		lastErr = err
+		if !isRetryable(err) || attempt == maxAttempts-1 {
+			return nil, err
+		}
+	}
+	return nil, lastErr
+}
+
+// doRequestOnce issues a single HTTP attempt and returns the (parsed) result.
+func (c *Client) doRequestOnce(method, path string, jsonBody []byte) ([]byte, error) {
 	var bodyReader io.Reader
 	if jsonBody != nil {
 		bodyReader = bytes.NewReader(jsonBody)
