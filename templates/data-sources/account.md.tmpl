@@ -1,0 +1,21 @@
+---
+page_title: "slurm_account Data Source - slurm"
+subcategory: ""
+description: |-
+  Reads an existing Slurm account by name, including its account-level association limits.
+---
+
+# slurm_account (Data Source)
+
+Reads an existing Slurm account by name. Returns the account metadata
+(description, organization, parent account) and the limits attached to
+its cluster-level association — fairshare, default QOS, allowed QOS,
+max running jobs, and TRES limits.
+
+Every attribute is read-only.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/slurm_account/data-source.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

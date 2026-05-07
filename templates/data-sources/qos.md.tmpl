@@ -1,0 +1,21 @@
+---
+page_title: "slurm_qos Data Source - slurm"
+subcategory: ""
+description: |-
+  Reads an existing Slurm Quality of Service (QOS) by name without managing it.
+---
+
+# slurm_qos (Data Source)
+
+Reads an existing Slurm QOS by name. Useful for referencing a QOS managed
+outside Terraform — for example one maintained by a separate team or
+auto-created by Slurm — without bringing it under provider management.
+
+The data source returns every QOS attribute that `slurm_qos` exposes,
+including TRES limits and flags. Every attribute is read-only.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/slurm_qos/data-source.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
