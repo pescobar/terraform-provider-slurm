@@ -3,6 +3,7 @@ package resources
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -126,8 +127,10 @@ func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest
 		"name": plan.Name.ValueString(),
 	})
 
-	// Build the accounts_association request which atomically creates the account
-	// metadata AND its cluster-level association with limits in one API call.
+	// Step 1: atomically create the account entity + an empty cluster-level
+	// association via /accounts_association/. No limits are sent here because
+	// that endpoint can race with parallel user association updates and drop
+	// QOS entries from the account-level association.
 	acctShort := client.AccountShort{}
 	if !plan.Description.IsNull() && !plan.Description.IsUnknown() {
 		acctShort.Description = plan.Description.ValueString()
@@ -139,32 +142,6 @@ func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest
 		acctShort.Parent = plan.Parent.ValueString()
 	}
 
-	assocSet := &client.AssocRecSet{}
-	hasLimits := false
-
-	if v := intPtrFromInt64(plan.Fairshare); v != nil {
-		assocSet.Fairshare = v
-		hasLimits = true
-	}
-	if !plan.DefaultQOS.IsNull() && !plan.DefaultQOS.IsUnknown() {
-		assocSet.DefaultQOS = plan.DefaultQOS.ValueString()
-		hasLimits = true
-	}
-	if !plan.AllowedQOS.IsNull() && !plan.AllowedQOS.IsUnknown() {
-		var qosList []string
-		diags = plan.AllowedQOS.ElementsAs(ctx, &qosList, false)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		assocSet.QOSLevel = qosList
-		hasLimits = true
-	}
-	if v := slurmIntFromInt64(plan.MaxJobs); v != nil {
-		assocSet.MaxJobs = v
-		hasLimits = true
-	}
-
 	acctAssocReq := client.AccountAssociationRequest{
 		AssociationCondition: client.AccountAssociationCondition{
 			Accounts: []string{plan.Name.ValueString()},
@@ -172,29 +149,21 @@ func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest
 		},
 		Account: acctShort,
 	}
-	if hasLimits {
-		acctAssocReq.AssociationCondition.Association = assocSet
-	}
-
 	if err := r.client.CreateAccountWithAssociation(acctAssocReq); err != nil {
 		resp.Diagnostics.AddError("Error creating account", err.Error())
 		return
 	}
 
-	// accounts_association/ does not accept TRES limits; set them via associations/
-	// in a second call if any are configured.
-	if tresMax := buildAssocMaxTRES(ctx,
-		plan.MaxTRESPerJob, plan.MaxTRESPerNode, plan.MaxTRESMinsPerJob,
-		plan.GrpTRES, plan.GrpTRESMins, plan.GrpTRESRunMins,
-	); tresMax != nil {
-		tresAssoc := client.Association{
-			Account: plan.Name.ValueString(),
-			Cluster: r.client.Cluster,
-			User:    "",
-			Max:     &client.AssociationMax{TRES: tresMax},
-		}
-		if err := r.client.CreateAssociations([]client.Association{tresAssoc}); err != nil {
-			resp.Diagnostics.AddError("Error setting account TRES limits", err.Error())
+	// Step 2: write all limits (flat + TRES) via /associations/ in one call.
+	// This is the same path Update takes, so Create and Update produce
+	// byte-identical JSON for the cluster-level association.
+	assoc, hasLimits := buildAccountAssociation(ctx, plan, r.client.Cluster, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if hasLimits {
+		if err := r.client.CreateAssociations([]client.Association{assoc}); err != nil {
+			resp.Diagnostics.AddError("Error setting account association limits", err.Error())
 			return
 		}
 	}
@@ -334,53 +303,13 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	// Update account-level association limits via /associations/ (same endpoint
-	// as user-level associations). Using accounts_association/ here causes a
-	// race condition when user association updates run in parallel: Slurm drops
-	// QOS entries from the account-level association. The /associations/ endpoint
-	// serializes correctly alongside concurrent user association updates.
-	assoc := client.Association{
-		Account: plan.Name.ValueString(),
-		Cluster: r.client.Cluster,
-		User:    "",
+	// Update the cluster-level association limits via /associations/. Same
+	// path as Create — see buildAccountAssociation for why we don't use
+	// /accounts_association/ here.
+	assoc, hasLimits := buildAccountAssociation(ctx, plan, r.client.Cluster, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
-	hasLimits := false
-
-	if v := intPtrFromInt64(plan.Fairshare); v != nil {
-		assoc.SharesRaw = v
-		hasLimits = true
-	}
-	if !plan.DefaultQOS.IsNull() {
-		assoc.Default = &client.AssociationDefaults{QOS: plan.DefaultQOS.ValueString()}
-		hasLimits = true
-	}
-	if !plan.AllowedQOS.IsNull() {
-		var qosList []string
-		diags = plan.AllowedQOS.ElementsAs(ctx, &qosList, false)
-		resp.Diagnostics.Append(diags...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		assoc.QOS = qosList
-		hasLimits = true
-	}
-	if v := slurmIntFromInt64(plan.MaxJobs); v != nil {
-		assoc.Max = &client.AssociationMax{
-			Jobs: &client.AssociationMaxJobs{Active: v},
-		}
-		hasLimits = true
-	}
-	if tresMax := buildAssocMaxTRES(ctx,
-		plan.MaxTRESPerJob, plan.MaxTRESPerNode, plan.MaxTRESMinsPerJob,
-		plan.GrpTRES, plan.GrpTRESMins, plan.GrpTRESRunMins,
-	); tresMax != nil {
-		if assoc.Max == nil {
-			assoc.Max = &client.AssociationMax{}
-		}
-		assoc.Max.TRES = tresMax
-		hasLimits = true
-	}
-
 	if hasLimits {
 		if err := r.client.CreateAssociations([]client.Association{assoc}); err != nil {
 			resp.Diagnostics.AddError("Error updating account association", err.Error())
@@ -416,3 +345,57 @@ func (r *accountResource) ImportState(ctx context.Context, req resource.ImportSt
 	importStateByName(ctx, req, resp)
 }
 
+// buildAccountAssociation constructs the cluster-level *client.Association
+// for a slurm_account from its model. Identity fields (User="", Account,
+// Cluster) are always populated; limit fields are filled only when the
+// corresponding plan attribute is non-null.
+//
+// The boolean is true when at least one limit field is set, so callers can
+// skip the CreateAssociations API call when there is nothing to send.
+//
+// Used by both Create and Update so the two paths produce byte-identical
+// JSON for the /associations/ endpoint — the previous Create path used the
+// /accounts_association/ endpoint with a different shape (AssocRecSet) and
+// could race against parallel user-association updates (Slurm dropped QOS
+// entries from the account-level association).
+func buildAccountAssociation(ctx context.Context, plan accountResourceModel, cluster string, diags *diag.Diagnostics) (client.Association, bool) {
+	assoc := client.Association{
+		Account: plan.Name.ValueString(),
+		Cluster: cluster,
+		User:    "",
+	}
+	hasLimits := false
+
+	if v := intPtrFromInt64(plan.Fairshare); v != nil {
+		assoc.SharesRaw = v
+		hasLimits = true
+	}
+	if !plan.DefaultQOS.IsNull() && !plan.DefaultQOS.IsUnknown() {
+		assoc.Default = &client.AssociationDefaults{QOS: plan.DefaultQOS.ValueString()}
+		hasLimits = true
+	}
+	if !plan.AllowedQOS.IsNull() && !plan.AllowedQOS.IsUnknown() {
+		var qosList []string
+		diags.Append(plan.AllowedQOS.ElementsAs(ctx, &qosList, false)...)
+		assoc.QOS = qosList
+		hasLimits = true
+	}
+	if v := slurmIntFromInt64(plan.MaxJobs); v != nil {
+		assoc.Max = &client.AssociationMax{
+			Jobs: &client.AssociationMaxJobs{Active: v},
+		}
+		hasLimits = true
+	}
+	if tresMax := buildAssocMaxTRES(ctx,
+		plan.MaxTRESPerJob, plan.MaxTRESPerNode, plan.MaxTRESMinsPerJob,
+		plan.GrpTRES, plan.GrpTRESMins, plan.GrpTRESRunMins,
+	); tresMax != nil {
+		if assoc.Max == nil {
+			assoc.Max = &client.AssociationMax{}
+		}
+		assoc.Max.TRES = tresMax
+		hasLimits = true
+	}
+
+	return assoc, hasLimits
+}

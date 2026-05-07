@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/pescobar/terraform-provider-slurm/internal/client"
@@ -228,5 +229,177 @@ func TestBuildAssocMaxTRES_FromAccount_MaxTRESPerJobAndPerNodeSharePerStruct(t *
 	}
 	if len(result.Per.Node) != 1 || result.Per.Node[0].Count != 16 {
 		t.Errorf("MaxTRESPerNode: expected count 16, got %v", result.Per.Node)
+	}
+}
+
+// ============================================================================
+// buildAccountAssociation
+// ============================================================================
+
+const testCluster = "linux"
+
+// stringListValue builds a non-null types.List of strings for tests.
+func stringListValue(t *testing.T, vs ...string) types.List {
+	t.Helper()
+	v, d := types.ListValueFrom(context.Background(), types.StringType, vs)
+	if d.HasError() {
+		t.Fatalf("stringListValue: %v", d)
+	}
+	return v
+}
+
+func TestBuildAccountAssociation_IdentityFieldsAlwaysSet(t *testing.T) {
+	ctx := context.Background()
+	m := emptyAccountModel("acct1")
+	var diags diag.Diagnostics
+	got, hasLimits := buildAccountAssociation(ctx, m, testCluster, &diags)
+	if got.Account != "acct1" {
+		t.Errorf("Account: got %q, want %q", got.Account, "acct1")
+	}
+	if got.Cluster != testCluster {
+		t.Errorf("Cluster: got %q, want %q", got.Cluster, testCluster)
+	}
+	if got.User != "" {
+		t.Errorf("User: got %q, want empty (account-level association)", got.User)
+	}
+	if hasLimits {
+		t.Error("hasLimits: got true, want false for empty model")
+	}
+	if got.SharesRaw != nil || got.Default != nil || got.QOS != nil || got.Max != nil {
+		t.Errorf("expected all limit fields nil, got %+v", got)
+	}
+}
+
+func TestBuildAccountAssociation_Fairshare(t *testing.T) {
+	ctx := context.Background()
+	m := emptyAccountModel("acct")
+	m.Fairshare = types.Int64Value(42)
+	var diags diag.Diagnostics
+	got, hasLimits := buildAccountAssociation(ctx, m, testCluster, &diags)
+	if !hasLimits {
+		t.Error("hasLimits: got false, want true")
+	}
+	if got.SharesRaw == nil || *got.SharesRaw != 42 {
+		t.Errorf("SharesRaw: got %v, want 42", got.SharesRaw)
+	}
+}
+
+func TestBuildAccountAssociation_DefaultQOS(t *testing.T) {
+	ctx := context.Background()
+	m := emptyAccountModel("acct")
+	m.DefaultQOS = types.StringValue("priority")
+	var diags diag.Diagnostics
+	got, hasLimits := buildAccountAssociation(ctx, m, testCluster, &diags)
+	if !hasLimits {
+		t.Error("hasLimits: got false, want true")
+	}
+	if got.Default == nil || got.Default.QOS != "priority" {
+		t.Errorf("Default.QOS: got %v, want 'priority'", got.Default)
+	}
+}
+
+func TestBuildAccountAssociation_AllowedQOS(t *testing.T) {
+	ctx := context.Background()
+	m := emptyAccountModel("acct")
+	m.AllowedQOS = stringListValue(t, "priority", "standard")
+	var diags diag.Diagnostics
+	got, hasLimits := buildAccountAssociation(ctx, m, testCluster, &diags)
+	if !hasLimits {
+		t.Error("hasLimits: got false, want true")
+	}
+	if len(got.QOS) != 2 || got.QOS[0] != "priority" || got.QOS[1] != "standard" {
+		t.Errorf("QOS: got %v, want [priority standard]", got.QOS)
+	}
+	if diags.HasError() {
+		t.Errorf("unexpected diagnostics: %v", diags)
+	}
+}
+
+func TestBuildAccountAssociation_MaxJobs(t *testing.T) {
+	ctx := context.Background()
+	m := emptyAccountModel("acct")
+	m.MaxJobs = types.Int64Value(100)
+	var diags diag.Diagnostics
+	got, hasLimits := buildAccountAssociation(ctx, m, testCluster, &diags)
+	if !hasLimits {
+		t.Error("hasLimits: got false, want true")
+	}
+	if got.Max == nil || got.Max.Jobs == nil || got.Max.Jobs.Active == nil ||
+		got.Max.Jobs.Active.Number != 100 || !got.Max.Jobs.Active.Set {
+		t.Errorf("Max.Jobs.Active: got %+v, want {Number:100, Set:true}", got.Max)
+	}
+}
+
+func TestBuildAccountAssociation_TRESOnlyShareSameMaxStruct(t *testing.T) {
+	// When only TRES is set (not MaxJobs), Max should still be allocated and
+	// hold only TRES — the TRES branch must allocate Max if it's still nil.
+	ctx := context.Background()
+	m := emptyAccountModel("acct")
+	m.GrpTRES = buildTRESSet(t, []client.TRES{{Type: "cpu", Count: 256}})
+	var diags diag.Diagnostics
+	got, hasLimits := buildAccountAssociation(ctx, m, testCluster, &diags)
+	if !hasLimits {
+		t.Error("hasLimits: got false, want true")
+	}
+	if got.Max == nil {
+		t.Fatal("Max: expected non-nil when TRES is set")
+	}
+	if got.Max.Jobs != nil {
+		t.Errorf("Max.Jobs: expected nil when only TRES is set, got %+v", got.Max.Jobs)
+	}
+	if got.Max.TRES == nil || len(got.Max.TRES.Total) != 1 {
+		t.Errorf("Max.TRES.Total: expected 1 entry, got %+v", got.Max.TRES)
+	}
+}
+
+func TestBuildAccountAssociation_MaxJobsAndTRESShareMaxStruct(t *testing.T) {
+	// Both MaxJobs and TRES populate the same Max struct — verify they coexist.
+	ctx := context.Background()
+	m := emptyAccountModel("acct")
+	m.MaxJobs = types.Int64Value(50)
+	m.GrpTRES = buildTRESSet(t, []client.TRES{{Type: "cpu", Count: 256}})
+	var diags diag.Diagnostics
+	got, _ := buildAccountAssociation(ctx, m, testCluster, &diags)
+	if got.Max == nil || got.Max.Jobs == nil || got.Max.Jobs.Active == nil ||
+		got.Max.Jobs.Active.Number != 50 {
+		t.Errorf("Max.Jobs.Active: got %+v", got.Max.Jobs)
+	}
+	if got.Max.TRES == nil || len(got.Max.TRES.Total) != 1 {
+		t.Errorf("Max.TRES: got %+v", got.Max.TRES)
+	}
+}
+
+func TestBuildAccountAssociation_AllFieldsCombined(t *testing.T) {
+	ctx := context.Background()
+	m := emptyAccountModel("acct")
+	m.Fairshare = types.Int64Value(10)
+	m.DefaultQOS = types.StringValue("priority")
+	m.AllowedQOS = stringListValue(t, "priority", "standard")
+	m.MaxJobs = types.Int64Value(100)
+	m.MaxTRESPerJob = buildTRESSet(t, []client.TRES{{Type: "cpu", Count: 8}})
+	m.GrpTRES = buildTRESSet(t, []client.TRES{{Type: "cpu", Count: 256}})
+	var diags diag.Diagnostics
+	got, hasLimits := buildAccountAssociation(ctx, m, testCluster, &diags)
+	if !hasLimits {
+		t.Error("hasLimits: got false, want true")
+	}
+	if got.SharesRaw == nil || *got.SharesRaw != 10 {
+		t.Error("Fairshare not applied")
+	}
+	if got.Default == nil || got.Default.QOS != "priority" {
+		t.Error("DefaultQOS not applied")
+	}
+	if len(got.QOS) != 2 {
+		t.Error("AllowedQOS not applied")
+	}
+	if got.Max == nil || got.Max.Jobs == nil || got.Max.Jobs.Active == nil {
+		t.Error("MaxJobs not applied")
+	}
+	if got.Max == nil || got.Max.TRES == nil || got.Max.TRES.Per == nil ||
+		len(got.Max.TRES.Per.Job) != 1 {
+		t.Error("MaxTRESPerJob not applied")
+	}
+	if got.Max == nil || got.Max.TRES == nil || len(got.Max.TRES.Total) != 1 {
+		t.Error("GrpTRES not applied")
 	}
 }

@@ -330,10 +330,15 @@ type AccountAssociationRequest struct {
 }
 
 // AccountAssociationCondition specifies which account+cluster combinations to create.
+//
+// The endpoint also accepts an "association" field for inline limits, but this
+// provider deliberately does not use it: posting limits via
+// /accounts_association/ races with concurrent user-association updates and
+// can drop QOS entries from the account-level association. Limits are written
+// in a follow-up call to /associations/ instead — see resources/account.go.
 type AccountAssociationCondition struct {
-	Accounts    []string     `json:"accounts"`
-	Clusters    []string     `json:"clusters,omitempty"`
-	Association *AssocRecSet `json:"association,omitempty"`
+	Accounts []string `json:"accounts"`
+	Clusters []string `json:"clusters,omitempty"`
 }
 
 // AccountShort is the minimal account object accepted by accounts_association.
@@ -341,16 +346,6 @@ type AccountShort struct {
 	Description  string `json:"description,omitempty"`
 	Organization string `json:"organization,omitempty"`
 	Parent       string `json:"parent,omitempty"`
-}
-
-// AssocRecSet holds the writable association limit fields accepted by
-// accounts_association and users_association. Field names differ from the
-// Association struct because the _association endpoints use a separate schema.
-type AssocRecSet struct {
-	Fairshare  *int      `json:"fairshare,omitempty"`
-	DefaultQOS string    `json:"defaultqos,omitempty"`
-	QOSLevel   []string  `json:"qoslevel,omitempty"`
-	MaxJobs    *SlurmInt `json:"maxjobs,omitempty"`
 }
 
 // CreateAccountWithAssociation creates an account and its cluster-level
