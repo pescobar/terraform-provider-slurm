@@ -22,8 +22,8 @@ func emptyModel(name string) qosResourceModel {
 		MaxWallPJ:               types.Int64Null(),
 		GrpWall:                 types.Int64Null(),
 		GraceTime:               types.Int64Null(),
-		UsageFactor:             types.Int64Null(),
-		UsageThreshold:          types.Int64Null(),
+		UsageFactor:             types.Float64Null(),
+		UsageThreshold:          types.Float64Null(),
 		PreemptExemptTime:       types.Int64Null(),
 		GrpJobs:                 types.Int64Null(),
 		GrpSubmitJobs:           types.Int64Null(),
@@ -284,8 +284,8 @@ func TestModelToAPI_BasicFields(t *testing.T) {
 	m := emptyModel("testqos")
 	m.Description = types.StringValue("Test QOS")
 	m.Priority = types.Int64Value(300)
-	m.UsageFactor = types.Int64Value(2)
-	m.UsageThreshold = types.Int64Value(50)
+	m.UsageFactor = types.Float64Value(2)
+	m.UsageThreshold = types.Float64Value(50)
 	qos := r.modelToAPI(ctx, m)
 
 	if qos.Description != "Test QOS" {
@@ -299,6 +299,44 @@ func TestModelToAPI_BasicFields(t *testing.T) {
 	}
 	if qos.UsageThreshold == nil || qos.UsageThreshold.Number != 50 {
 		t.Errorf("expected usage_threshold 50, got %v", qos.UsageThreshold)
+	}
+}
+
+// Round-trip a fractional usage_factor / usage_threshold to prove the
+// Float64 schema preserves precision (the previous Int64 schema silently
+// truncated 0.5 to 0).
+func TestModelToAPI_FractionalUsage(t *testing.T) {
+	r := &qosResource{}
+	ctx := context.Background()
+
+	m := emptyModel("testqos")
+	m.UsageFactor = types.Float64Value(0.5)
+	m.UsageThreshold = types.Float64Value(0.25)
+	qos := r.modelToAPI(ctx, m)
+
+	if qos.UsageFactor == nil || qos.UsageFactor.Number != 0.5 {
+		t.Errorf("expected usage_factor 0.5, got %v", qos.UsageFactor)
+	}
+	if qos.UsageThreshold == nil || qos.UsageThreshold.Number != 0.25 {
+		t.Errorf("expected usage_threshold 0.25, got %v", qos.UsageThreshold)
+	}
+
+	// And back: a fractional API value lands intact in state.
+	apiQOS := &client.QOS{
+		Name:           "testqos",
+		UsageFactor:    &client.SlurmFloat{Number: 1.5, Set: true},
+		UsageThreshold: &client.SlurmFloat{Number: 0.1, Set: true},
+	}
+	var diags diag.Diagnostics
+	state := r.apiToState(ctx, apiQOS, &diags)
+	if diags.HasError() {
+		t.Fatalf("apiToState diagnostics: %v", diags)
+	}
+	if got := state.UsageFactor.ValueFloat64(); got != 1.5 {
+		t.Errorf("apiToState usage_factor: want 1.5, got %v", got)
+	}
+	if got := state.UsageThreshold.ValueFloat64(); got != 0.1 {
+		t.Errorf("apiToState usage_threshold: want 0.1, got %v", got)
 	}
 }
 

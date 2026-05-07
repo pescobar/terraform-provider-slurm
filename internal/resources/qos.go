@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/float64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -11,7 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -98,8 +99,8 @@ type qosResourceModel struct {
 
 	// Miscellaneous
 	GraceTime          types.Int64 `tfsdk:"grace_time"`           // GraceTime (seconds)
-	UsageFactor        types.Int64 `tfsdk:"usage_factor"`         // UsageFactor
-	UsageThreshold     types.Int64 `tfsdk:"usage_threshold"`      // UsageThres
+	UsageFactor        types.Float64 `tfsdk:"usage_factor"`       // UsageFactor (float — Slurm allows fractional)
+	UsageThreshold     types.Float64 `tfsdk:"usage_threshold"`    // UsageThres  (float — Slurm allows fractional)
 	PreemptExemptTime  types.Int64 `tfsdk:"preempt_exempt_time"`  // PreemptExemptTime (seconds)
 }
 
@@ -276,23 +277,23 @@ func (r *qosResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Optional:    true,
 				Validators:  []validator.Int64{int64validator.AtLeast(0)},
 			},
-			"usage_factor": schema.Int64Attribute{
-				Description: "Factor applied to a job's usage when it runs under this QOS (UsageFactor). Slurm default is 1. Optional+Computed: omitting it from config keeps the current Slurm value.",
+			"usage_factor": schema.Float64Attribute{
+				Description: "Factor applied to a job's usage when it runs under this QOS (UsageFactor). Slurm default is 1. Fractional values (e.g. 0.5) are allowed. Optional+Computed: omitting it from config keeps the current Slurm value.",
 				Optional:    true,
 				Computed:    true,
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
+				PlanModifiers: []planmodifier.Float64{
+					float64planmodifier.UseStateForUnknown(),
 				},
-				Validators: []validator.Int64{int64validator.AtLeast(0)},
+				Validators: []validator.Float64{float64validator.AtLeast(0)},
 			},
-			"usage_threshold": schema.Int64Attribute{
-				Description: "Minimum usage factor a user must maintain to submit jobs under this QOS (UsageThres). Optional+Computed: omitting it keeps the current Slurm value.",
+			"usage_threshold": schema.Float64Attribute{
+				Description: "Minimum usage factor a user must maintain to submit jobs under this QOS (UsageThres). Fractional values are allowed. Optional+Computed: omitting it keeps the current Slurm value.",
 				Optional:    true,
 				Computed:    true,
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
+				PlanModifiers: []planmodifier.Float64{
+					float64planmodifier.UseStateForUnknown(),
 				},
-				Validators: []validator.Int64{int64validator.AtLeast(0)},
+				Validators: []validator.Float64{float64validator.AtLeast(0)},
 			},
 			"preempt_exempt_time": schema.Int64Attribute{
 				Description: "Minimum number of seconds a job must run before it can be preempted (PreemptExemptTime).",
@@ -450,8 +451,8 @@ func (r *qosResource) apiToState(ctx context.Context, qos *client.QOS, diags *di
 		Description: types.StringValue(qos.Description),
 		// Scalar optionals — null unless populated below.
 		Priority:                types.Int64Null(),
-		UsageFactor:             types.Int64Null(),
-		UsageThreshold:          types.Int64Null(),
+		UsageFactor:             types.Float64Null(),
+		UsageThreshold:          types.Float64Null(),
 		GraceTime:               types.Int64Null(),
 		MaxWallPJ:               types.Int64Null(),
 		GrpWall:                 types.Int64Null(),
@@ -484,12 +485,14 @@ func (r *qosResource) apiToState(ctx context.Context, qos *client.QOS, diags *di
 		state.Priority = types.Int64Value(int64(qos.Priority.Number))
 	}
 
-	// UsageFactor / UsageThreshold
+	// UsageFactor / UsageThreshold — Slurm stores both as floats; fractional
+	// values (e.g. 0.5) round-trip without truncation now that the schema
+	// uses Float64Attribute.
 	if qos.UsageFactor != nil && qos.UsageFactor.Set && !qos.UsageFactor.Infinite {
-		state.UsageFactor = types.Int64Value(int64(qos.UsageFactor.Number))
+		state.UsageFactor = types.Float64Value(qos.UsageFactor.Number)
 	}
 	if qos.UsageThreshold != nil && qos.UsageThreshold.Set && !qos.UsageThreshold.Infinite {
-		state.UsageThreshold = types.Int64Value(int64(qos.UsageThreshold.Number))
+		state.UsageThreshold = types.Float64Value(qos.UsageThreshold.Number)
 	}
 
 	// Preempt
@@ -676,10 +679,10 @@ func (r *qosResource) modelToAPI(ctx context.Context, m qosResourceModel) client
 	}
 	qos.Priority = slurmIntFromInt64(m.Priority)
 	if !m.UsageFactor.IsNull() && !m.UsageFactor.IsUnknown() {
-		qos.UsageFactor = &client.SlurmFloat{Number: float64(m.UsageFactor.ValueInt64()), Set: true}
+		qos.UsageFactor = &client.SlurmFloat{Number: m.UsageFactor.ValueFloat64(), Set: true}
 	}
 	if !m.UsageThreshold.IsNull() && !m.UsageThreshold.IsUnknown() {
-		qos.UsageThreshold = &client.SlurmFloat{Number: float64(m.UsageThreshold.ValueInt64()), Set: true}
+		qos.UsageThreshold = &client.SlurmFloat{Number: m.UsageThreshold.ValueFloat64(), Set: true}
 	}
 
 	// Flags

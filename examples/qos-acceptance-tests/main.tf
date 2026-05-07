@@ -158,9 +158,11 @@ resource "slurm_qos" "qtest_misc" {
   description = "Miscellaneous limit QOS"
   priority    = 10
 
-  grace_time      = 60
-  usage_factor    = 2
-  usage_threshold = 100
+  grace_time = 60
+  # Fractional values exercise the Float64 schema — Slurm stores both as
+  # floats, and the previous Int64 schema silently truncated 0.5 to 0.
+  usage_factor    = 0.5
+  usage_threshold = 0.25
 
   max_wall_pj = 360
 
