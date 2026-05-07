@@ -78,30 +78,30 @@ type qosResourceModel struct {
 	PreemptMode types.Set    `tfsdk:"preempt_mode"`
 
 	// TRES limits (sacctmgr names in comments)
-	GrpTRES              types.Set `tfsdk:"grp_tres"`               // GrpTRES
-	GrpTRESMins          types.Set `tfsdk:"grp_tres_mins"`           // GrpTRESMins
-	MaxTRESPerJob        types.Set `tfsdk:"max_tres_per_job"`        // MaxTRES
-	MaxTRESMinsPerJob    types.Set `tfsdk:"max_tres_mins_per_job"`   // MaxTRESMins
-	MaxTRESPerNode       types.Set `tfsdk:"max_tres_per_node"`       // MaxTRESPerNode
-	MaxTRESPerUser       types.Set `tfsdk:"max_tres_per_user"`       // MaxTRESPU
-	MaxTRESMinsPerUser   types.Set `tfsdk:"max_tres_mins_per_user"`  // MaxTRESRunMinsPU
-	MaxTRESPerAccount    types.Set `tfsdk:"max_tres_per_account"`    // MaxTRESPA
+	GrpTRES               types.Set `tfsdk:"grp_tres"`                  // GrpTRES
+	GrpTRESMins           types.Set `tfsdk:"grp_tres_mins"`             // GrpTRESMins
+	MaxTRESPerJob         types.Set `tfsdk:"max_tres_per_job"`          // MaxTRES
+	MaxTRESMinsPerJob     types.Set `tfsdk:"max_tres_mins_per_job"`     // MaxTRESMins
+	MaxTRESPerNode        types.Set `tfsdk:"max_tres_per_node"`         // MaxTRESPerNode
+	MaxTRESPerUser        types.Set `tfsdk:"max_tres_per_user"`         // MaxTRESPU
+	MaxTRESMinsPerUser    types.Set `tfsdk:"max_tres_mins_per_user"`    // MaxTRESRunMinsPU
+	MaxTRESPerAccount     types.Set `tfsdk:"max_tres_per_account"`      // MaxTRESPA
 	MaxTRESMinsPerAccount types.Set `tfsdk:"max_tres_mins_per_account"` // MaxTRESRunMinsPA
-	MinTRESPerJob        types.Set `tfsdk:"min_tres_per_job"`        // MinTRES
+	MinTRESPerJob         types.Set `tfsdk:"min_tres_per_job"`          // MinTRES
 
 	// Job-count limits
-	GrpJobs               types.Int64 `tfsdk:"grp_jobs"`                 // GrpJobs
-	GrpSubmitJobs         types.Int64 `tfsdk:"grp_submit_jobs"`          // GrpSubmit
-	MaxJobsPerUser        types.Int64 `tfsdk:"max_jobs_per_user"`        // MaxJobsPU
-	MaxSubmitJobsPerUser  types.Int64 `tfsdk:"max_submit_jobs_per_user"` // MaxSubmitPU
-	MaxJobsPerAccount     types.Int64 `tfsdk:"max_jobs_per_account"`     // MaxJobsPA
+	GrpJobs                 types.Int64 `tfsdk:"grp_jobs"`                    // GrpJobs
+	GrpSubmitJobs           types.Int64 `tfsdk:"grp_submit_jobs"`             // GrpSubmit
+	MaxJobsPerUser          types.Int64 `tfsdk:"max_jobs_per_user"`           // MaxJobsPU
+	MaxSubmitJobsPerUser    types.Int64 `tfsdk:"max_submit_jobs_per_user"`    // MaxSubmitPU
+	MaxJobsPerAccount       types.Int64 `tfsdk:"max_jobs_per_account"`        // MaxJobsPA
 	MaxSubmitJobsPerAccount types.Int64 `tfsdk:"max_submit_jobs_per_account"` // MaxSubmitPA
 
 	// Miscellaneous
-	GraceTime          types.Int64 `tfsdk:"grace_time"`           // GraceTime (seconds)
-	UsageFactor        types.Float64 `tfsdk:"usage_factor"`       // UsageFactor (float — Slurm allows fractional)
-	UsageThreshold     types.Float64 `tfsdk:"usage_threshold"`    // UsageThres  (float — Slurm allows fractional)
-	PreemptExemptTime  types.Int64 `tfsdk:"preempt_exempt_time"`  // PreemptExemptTime (seconds)
+	GraceTime         types.Int64   `tfsdk:"grace_time"`          // GraceTime (seconds)
+	UsageFactor       types.Float64 `tfsdk:"usage_factor"`        // UsageFactor (float — Slurm allows fractional)
+	UsageThreshold    types.Float64 `tfsdk:"usage_threshold"`     // UsageThres  (float — Slurm allows fractional)
+	PreemptExemptTime types.Int64   `tfsdk:"preempt_exempt_time"` // PreemptExemptTime (seconds)
 }
 
 // tresAttrTypes returns the attribute type map for a TRES object element.
@@ -170,26 +170,26 @@ func planTresListToAPI(ctx context.Context, s types.Set) []client.TRES {
 // limit attributes, keeping the schema definition DRY.
 func tresSchemaAttr(description string) schema.SetNestedAttribute {
 	return schema.SetNestedAttribute{
-		Description: description,
-		Optional:    true,
-		Computed:    true,
+		MarkdownDescription: description,
+		Optional:            true,
+		Computed:            true,
 		PlanModifiers: []planmodifier.Set{
 			setplanmodifier.UseStateForUnknown(),
 		},
 		NestedObject: schema.NestedAttributeObject{
 			Attributes: map[string]schema.Attribute{
 				"type": schema.StringAttribute{
-					Required:    true,
-					Description: "TRES type (e.g. cpu, mem, gres).",
+					Required:            true,
+					MarkdownDescription: "TRES type (e.g. cpu, mem, gres).",
 				},
 				"name": schema.StringAttribute{
-					Optional:    true,
-					Description: "TRES name. Required for generic resources such as gres/gpu; omit for cpu and mem.",
+					Optional:            true,
+					MarkdownDescription: "TRES name. Required for generic resources such as gres/gpu; omit for cpu and mem.",
 				},
 				"count": schema.Int64Attribute{
-					Required:    true,
-					Description: "TRES count limit.",
-					Validators:  []validator.Int64{int64validator.AtLeast(0)},
+					Required:            true,
+					MarkdownDescription: "TRES count limit.",
+					Validators:          []validator.Int64{int64validator.AtLeast(0)},
 				},
 			},
 		},
@@ -201,22 +201,22 @@ func tresSchemaAttr(description string) schema.SetNestedAttribute {
 // not inject defaults, so Optional-only suffices.
 func tresOptionalSchemaAttr(description string) schema.SetNestedAttribute {
 	return schema.SetNestedAttribute{
-		Description: description,
-		Optional:    true,
+		MarkdownDescription: description,
+		Optional:            true,
 		NestedObject: schema.NestedAttributeObject{
 			Attributes: map[string]schema.Attribute{
 				"type": schema.StringAttribute{
-					Required:    true,
-					Description: "TRES type (e.g. cpu, mem, gres).",
+					Required:            true,
+					MarkdownDescription: "TRES type (e.g. cpu, mem, gres).",
 				},
 				"name": schema.StringAttribute{
-					Optional:    true,
-					Description: "TRES name. Required for generic resources such as gres/gpu; omit for cpu and mem.",
+					Optional:            true,
+					MarkdownDescription: "TRES name. Required for generic resources such as gres/gpu; omit for cpu and mem.",
 				},
 				"count": schema.Int64Attribute{
-					Required:    true,
-					Description: "TRES count limit.",
-					Validators:  []validator.Int64{int64validator.AtLeast(0)},
+					Required:            true,
+					MarkdownDescription: "TRES count limit.",
+					Validators:          []validator.Int64{int64validator.AtLeast(0)},
 				},
 			},
 		},
@@ -233,137 +233,137 @@ func (r *qosResource) Metadata(_ context.Context, req resource.MetadataRequest, 
 
 func (r *qosResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a Slurm Quality of Service (QOS) definition.",
+		MarkdownDescription: "Manages a Slurm Quality of Service (QOS) definition.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				Description: "The QOS name (same as name).",
-				Computed:    true,
+				MarkdownDescription: "The QOS name (same as name).",
+				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"name": schema.StringAttribute{
-				Description: "The name of the QOS.",
-				Required:    true,
+				MarkdownDescription: "The name of the QOS.",
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"description": schema.StringAttribute{
-				Description: "A description of the QOS.",
-				Optional:    true,
-				Computed:    true,
+				MarkdownDescription: "A description of the QOS.",
+				Optional:            true,
+				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"priority": schema.Int64Attribute{
-				Description: "Priority value for this QOS (Priority).",
-				Optional:    true,
-				Validators:  []validator.Int64{int64validator.AtLeast(0)},
+				MarkdownDescription: "Priority value for this QOS (Priority).",
+				Optional:            true,
+				Validators:          []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"max_wall_pj": schema.Int64Attribute{
-				Description: "Maximum wall-clock time per job in minutes (MaxWall).",
-				Optional:    true,
-				Validators:  []validator.Int64{int64validator.AtLeast(0)},
+				MarkdownDescription: "Maximum wall-clock time per job in minutes (MaxWall).",
+				Optional:            true,
+				Validators:          []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"grp_wall": schema.Int64Attribute{
-				Description: "Maximum total wall-clock time in minutes that all jobs using this QOS can run simultaneously (GrpWall).",
-				Optional:    true,
-				Validators:  []validator.Int64{int64validator.AtLeast(0)},
+				MarkdownDescription: "Maximum total wall-clock time in minutes that all jobs using this QOS can run simultaneously (GrpWall).",
+				Optional:            true,
+				Validators:          []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"grace_time": schema.Int64Attribute{
-				Description: "Grace time in seconds before a job exceeding QOS limits is cancelled (GraceTime).",
-				Optional:    true,
-				Validators:  []validator.Int64{int64validator.AtLeast(0)},
+				MarkdownDescription: "Grace time in seconds before a job exceeding QOS limits is cancelled (GraceTime).",
+				Optional:            true,
+				Validators:          []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"usage_factor": schema.Float64Attribute{
-				Description: "Factor applied to a job's usage when it runs under this QOS (UsageFactor). Slurm default is 1. Fractional values (e.g. 0.5) are allowed. Optional+Computed: omitting it from config keeps the current Slurm value.",
-				Optional:    true,
-				Computed:    true,
+				MarkdownDescription: "Factor applied to a job's usage when it runs under this QOS (UsageFactor). Slurm default is 1. Fractional values (e.g. 0.5) are allowed. Optional+Computed: omitting it from config keeps the current Slurm value.",
+				Optional:            true,
+				Computed:            true,
 				PlanModifiers: []planmodifier.Float64{
 					float64planmodifier.UseStateForUnknown(),
 				},
 				Validators: []validator.Float64{float64validator.AtLeast(0)},
 			},
 			"usage_threshold": schema.Float64Attribute{
-				Description: "Minimum usage factor a user must maintain to submit jobs under this QOS (UsageThres). Fractional values are allowed. Optional+Computed: omitting it keeps the current Slurm value.",
-				Optional:    true,
-				Computed:    true,
+				MarkdownDescription: "Minimum usage factor a user must maintain to submit jobs under this QOS (UsageThres). Fractional values are allowed. Optional+Computed: omitting it keeps the current Slurm value.",
+				Optional:            true,
+				Computed:            true,
 				PlanModifiers: []planmodifier.Float64{
 					float64planmodifier.UseStateForUnknown(),
 				},
 				Validators: []validator.Float64{float64validator.AtLeast(0)},
 			},
 			"preempt_exempt_time": schema.Int64Attribute{
-				Description: "Minimum number of seconds a job must run before it can be preempted (PreemptExemptTime).",
-				Optional:    true,
-				Validators:  []validator.Int64{int64validator.AtLeast(0)},
+				MarkdownDescription: "Minimum number of seconds a job must run before it can be preempted (PreemptExemptTime).",
+				Optional:            true,
+				Validators:          []validator.Int64{int64validator.AtLeast(0)},
 			},
 			// Job-count limits
 			"grp_jobs": schema.Int64Attribute{
-				Description: "Maximum number of jobs running simultaneously across all users of this QOS (GrpJobs).",
-				Optional:    true,
-				Validators:  []validator.Int64{int64validator.AtLeast(0)},
+				MarkdownDescription: "Maximum number of jobs running simultaneously across all users of this QOS (GrpJobs).",
+				Optional:            true,
+				Validators:          []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"grp_submit_jobs": schema.Int64Attribute{
-				Description: "Maximum number of jobs that can be submitted at once across all users of this QOS (GrpSubmit).",
-				Optional:    true,
-				Validators:  []validator.Int64{int64validator.AtLeast(0)},
+				MarkdownDescription: "Maximum number of jobs that can be submitted at once across all users of this QOS (GrpSubmit).",
+				Optional:            true,
+				Validators:          []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"max_jobs_per_user": schema.Int64Attribute{
-				Description: "Maximum number of jobs a single user can run simultaneously under this QOS (MaxJobsPU).",
-				Optional:    true,
-				Validators:  []validator.Int64{int64validator.AtLeast(0)},
+				MarkdownDescription: "Maximum number of jobs a single user can run simultaneously under this QOS (MaxJobsPU).",
+				Optional:            true,
+				Validators:          []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"max_submit_jobs_per_user": schema.Int64Attribute{
-				Description: "Maximum number of jobs a single user can have submitted under this QOS (MaxSubmitPU).",
-				Optional:    true,
-				Validators:  []validator.Int64{int64validator.AtLeast(0)},
+				MarkdownDescription: "Maximum number of jobs a single user can have submitted under this QOS (MaxSubmitPU).",
+				Optional:            true,
+				Validators:          []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"max_jobs_per_account": schema.Int64Attribute{
-				Description: "Maximum number of jobs an account can run simultaneously under this QOS (MaxJobsPA).",
-				Optional:    true,
-				Validators:  []validator.Int64{int64validator.AtLeast(0)},
+				MarkdownDescription: "Maximum number of jobs an account can run simultaneously under this QOS (MaxJobsPA).",
+				Optional:            true,
+				Validators:          []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"max_submit_jobs_per_account": schema.Int64Attribute{
-				Description: "Maximum number of jobs an account can have submitted under this QOS (MaxSubmitPA).",
-				Optional:    true,
-				Validators:  []validator.Int64{int64validator.AtLeast(0)},
+				MarkdownDescription: "Maximum number of jobs an account can have submitted under this QOS (MaxSubmitPA).",
+				Optional:            true,
+				Validators:          []validator.Int64{int64validator.AtLeast(0)},
 			},
 			// Sets
 			"flags": schema.SetAttribute{
-				Description: "QOS flags. Values must use the REST API name (UPPER_SNAKE_CASE). Valid values: PARTITION_MINIMUM_NODE, PARTITION_MAXIMUM_NODE, PARTITION_TIME_LIMIT, ENFORCE_USAGE_THRESHOLD, NO_RESERVE, REQUIRED_RESERVATION, DENY_LIMIT, OVERRIDE_PARTITION_QOS, NO_DECAY, USAGE_FACTOR_SAFE, RELATIVE.",
-				Optional:    true,
-				ElementType: types.StringType,
+				MarkdownDescription: "QOS flags. Values must use the REST API name (UPPER_SNAKE_CASE). Valid values: PARTITION_MINIMUM_NODE, PARTITION_MAXIMUM_NODE, PARTITION_TIME_LIMIT, ENFORCE_USAGE_THRESHOLD, NO_RESERVE, REQUIRED_RESERVATION, DENY_LIMIT, OVERRIDE_PARTITION_QOS, NO_DECAY, USAGE_FACTOR_SAFE, RELATIVE.",
+				Optional:            true,
+				ElementType:         types.StringType,
 				Validators: []validator.Set{
 					setvalidator.ValueStringsAre(stringvalidator.OneOf(qosFlagValues...)),
 				},
 			},
 			"preempt_list": schema.SetAttribute{
-				Description: "Set of QOS names that this QOS can preempt (Preempt).",
-				Optional:    true,
-				ElementType: types.StringType,
+				MarkdownDescription: "Set of QOS names that this QOS can preempt (Preempt).",
+				Optional:            true,
+				ElementType:         types.StringType,
 			},
 			"preempt_mode": schema.SetAttribute{
-				Description: "Preemption mode. Valid values: OFF, CANCEL, GANG, REQUEUE, SUSPEND, WITHIN (PreemptMode).",
-				Optional:    true,
-				ElementType: types.StringType,
+				MarkdownDescription: "Preemption mode. Valid values: OFF, CANCEL, GANG, REQUEUE, SUSPEND, WITHIN (PreemptMode).",
+				Optional:            true,
+				ElementType:         types.StringType,
 				Validators: []validator.Set{
 					setvalidator.ValueStringsAre(stringvalidator.OneOf(qosPreemptModeValues...)),
 				},
 			},
 			// TRES limits
-			"grp_tres":               tresSchemaAttr("Maximum TRES usable by all jobs in this QOS at any time (GrpTRES)."),
-			"grp_tres_mins":          tresSchemaAttr("Maximum TRES-minutes consumable by all jobs in this QOS (GrpTRESMins)."),
-			"max_tres_per_job":       tresSchemaAttr("Maximum TRES a single job can request (MaxTRES)."),
-			"max_tres_mins_per_job":  tresSchemaAttr("Maximum TRES-minutes a single job can consume (MaxTRESMins)."),
-			"max_tres_per_node":      tresSchemaAttr("Maximum TRES a single job can use per node (MaxTRESPerNode)."),
-			"max_tres_per_user":      tresSchemaAttr("Maximum TRES a single user can use simultaneously (MaxTRESPU)."),
-			"max_tres_mins_per_user": tresSchemaAttr("Maximum TRES-minutes a single user can consume (MaxTRESRunMinsPU)."),
-			"max_tres_per_account":   tresSchemaAttr("Maximum TRES a single account can use simultaneously (MaxTRESPA)."),
+			"grp_tres":                  tresSchemaAttr("Maximum TRES usable by all jobs in this QOS at any time (GrpTRES)."),
+			"grp_tres_mins":             tresSchemaAttr("Maximum TRES-minutes consumable by all jobs in this QOS (GrpTRESMins)."),
+			"max_tres_per_job":          tresSchemaAttr("Maximum TRES a single job can request (MaxTRES)."),
+			"max_tres_mins_per_job":     tresSchemaAttr("Maximum TRES-minutes a single job can consume (MaxTRESMins)."),
+			"max_tres_per_node":         tresSchemaAttr("Maximum TRES a single job can use per node (MaxTRESPerNode)."),
+			"max_tres_per_user":         tresSchemaAttr("Maximum TRES a single user can use simultaneously (MaxTRESPU)."),
+			"max_tres_mins_per_user":    tresSchemaAttr("Maximum TRES-minutes a single user can consume (MaxTRESRunMinsPU)."),
+			"max_tres_per_account":      tresSchemaAttr("Maximum TRES a single account can use simultaneously (MaxTRESPA)."),
 			"max_tres_mins_per_account": tresSchemaAttr("Maximum TRES-minutes a single account can consume (MaxTRESRunMinsPA)."),
-			"min_tres_per_job":       tresSchemaAttr("Minimum TRES a job must request to use this QOS (MinTRES)."),
+			"min_tres_per_job":          tresSchemaAttr("Minimum TRES a job must request to use this QOS (MinTRES)."),
 		},
 	}
 }

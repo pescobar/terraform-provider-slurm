@@ -66,10 +66,10 @@ func TestAdminLevelValidator(t *testing.T) {
 		{"None", true},
 		{"Operator", true},
 		{"Administrator", true},
-		{"Sudo", false},                    // unknown level
-		{"none", false},                    // case-sensitive
-		{"administrator", false},           // case-sensitive
-		{"", false},                        // empty rejected when set explicitly
+		{"Sudo", false},          // unknown level
+		{"none", false},          // case-sensitive
+		{"administrator", false}, // case-sensitive
+		{"", false},              // empty rejected when set explicitly
 	}
 	for _, tc := range tests {
 		t.Run(tc.value, func(t *testing.T) {

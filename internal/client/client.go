@@ -428,7 +428,7 @@ func (c *Client) DeleteAccount(name string) error {
 // This endpoint atomically creates an account and its cluster-level association.
 type AccountAssociationRequest struct {
 	AssociationCondition AccountAssociationCondition `json:"association_condition"`
-	Account              AccountShort               `json:"account"`
+	Account              AccountShort                `json:"account"`
 }
 
 // AccountAssociationCondition specifies which account+cluster combinations to create.
@@ -471,14 +471,14 @@ type QOSResponse struct {
 // QOS represents a Slurm Quality of Service.
 // The structure mirrors the Slurm API's nested JSON format.
 type QOS struct {
-	Name             string      `json:"name"`
-	Description      string      `json:"description,omitempty"`
-	Priority         *SlurmInt   `json:"priority,omitempty"`
-	Flags            []string    `json:"flags,omitempty"`
-	Limits           *QOSLimits  `json:"limits,omitempty"`
-	Preempt          *QOSPreempt `json:"preempt,omitempty"`
-	UsageFactor      *SlurmFloat `json:"usage_factor,omitempty"`
-	UsageThreshold   *SlurmFloat `json:"usage_threshold,omitempty"`
+	Name           string      `json:"name"`
+	Description    string      `json:"description,omitempty"`
+	Priority       *SlurmInt   `json:"priority,omitempty"`
+	Flags          []string    `json:"flags,omitempty"`
+	Limits         *QOSLimits  `json:"limits,omitempty"`
+	Preempt        *QOSPreempt `json:"preempt,omitempty"`
+	UsageFactor    *SlurmFloat `json:"usage_factor,omitempty"`
+	UsageThreshold *SlurmFloat `json:"usage_threshold,omitempty"`
 }
 
 // SlurmInt represents Slurm's integer type which includes set/infinite flags.
@@ -691,7 +691,7 @@ type UserDefault struct {
 // user/account lists, not a users+associations payload.
 type UserAssociationRequest struct {
 	AssociationCondition UserAssociationCondition `json:"association_condition"`
-	User                 UserShort               `json:"user"`
+	User                 UserShort                `json:"user"`
 }
 
 // UserAssociationCondition specifies which user+account combinations to create.
@@ -800,20 +800,21 @@ type AssociationDefaults struct {
 // separate top-level "grp" key.
 //
 // Mapping from sacctmgr names → JSON paths:
-//   MaxJobs        → max.jobs.active
-//   MaxJobsAccrue  → max.jobs.accruing
-//   MaxSubmitJobs  → max.jobs.total
-//   MaxWall        → max.jobs.per.wall_clock  (minutes)
-//   GrpJobs        → max.jobs.per.count
-//   GrpJobsAccrue  → max.jobs.per.accruing
-//   GrpSubmitJobs  → max.jobs.per.submitted
-//   GrpWall        → max.per.account.wall_clock  (minutes)
-//   MaxTRES        → max.tres.per.job
-//   MaxTRESPerNode → max.tres.per.node
-//   MaxTRESMins    → max.tres.minutes.per.job
-//   GrpTRES        → max.tres.total
-//   GrpTRESMins    → max.tres.group.minutes
-//   GrpTRESRunMins → max.tres.group.active
+//
+//	MaxJobs        → max.jobs.active
+//	MaxJobsAccrue  → max.jobs.accruing
+//	MaxSubmitJobs  → max.jobs.total
+//	MaxWall        → max.jobs.per.wall_clock  (minutes)
+//	GrpJobs        → max.jobs.per.count
+//	GrpJobsAccrue  → max.jobs.per.accruing
+//	GrpSubmitJobs  → max.jobs.per.submitted
+//	GrpWall        → max.per.account.wall_clock  (minutes)
+//	MaxTRES        → max.tres.per.job
+//	MaxTRESPerNode → max.tres.per.node
+//	MaxTRESMins    → max.tres.minutes.per.job
+//	GrpTRES        → max.tres.total
+//	GrpTRESMins    → max.tres.group.minutes
+//	GrpTRESRunMins → max.tres.group.active
 type AssociationMax struct {
 	Jobs *AssociationMaxJobs    `json:"jobs,omitempty"`
 	TRES *AssociationMaxTRES    `json:"tres,omitempty"`
@@ -838,10 +839,10 @@ type AssociationMaxJobsPer struct {
 
 // AssociationMaxTRES holds all TRES limits (both Max* and Grp* variants).
 type AssociationMaxTRES struct {
-	Total   []TRES                    `json:"total,omitempty"`   // GrpTRES
-	Group   *AssociationMaxTRESGroup  `json:"group,omitempty"`   // GrpTRESMins / GrpTRESRunMins
-	Minutes *AssociationMaxTRESMins   `json:"minutes,omitempty"` // MaxTRESMins
-	Per     *AssociationMaxTRESPer    `json:"per,omitempty"`     // MaxTRES / MaxTRESPerNode
+	Total   []TRES                   `json:"total,omitempty"`   // GrpTRES
+	Group   *AssociationMaxTRESGroup `json:"group,omitempty"`   // GrpTRESMins / GrpTRESRunMins
+	Minutes *AssociationMaxTRESMins  `json:"minutes,omitempty"` // MaxTRESMins
+	Per     *AssociationMaxTRESPer   `json:"per,omitempty"`     // MaxTRES / MaxTRESPerNode
 }
 
 // AssociationMaxTRESGroup holds group-aggregate TRES-minute limits.

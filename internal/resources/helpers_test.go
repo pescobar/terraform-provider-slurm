@@ -174,7 +174,7 @@ func newImportState() tfsdk.State {
 		"name": tftypes.NewValue(tftypes.String, nil),
 	})
 	return tfsdk.State{
-		Raw: rawState,
+		Raw:    rawState,
 		Schema: importTestSchema(),
 	}
 }

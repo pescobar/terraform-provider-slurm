@@ -58,8 +58,8 @@ type associationModel struct {
 	// Max wall-clock
 	MaxWallPJ types.Int64 `tfsdk:"max_wall_pj"`
 	// Max TRES limits
-	MaxTRESPerJob    types.Set `tfsdk:"max_tres_per_job"`
-	MaxTRESPerNode   types.Set `tfsdk:"max_tres_per_node"`
+	MaxTRESPerJob     types.Set `tfsdk:"max_tres_per_job"`
+	MaxTRESPerNode    types.Set `tfsdk:"max_tres_per_node"`
 	MaxTRESMinsPerJob types.Set `tfsdk:"max_tres_mins_per_job"`
 	// Grp job-count limits
 	GrpJobs       types.Int64 `tfsdk:"grp_jobs"`
@@ -93,8 +93,8 @@ func associationModelType() map[string]attr.Type {
 		// Max wall-clock
 		"max_wall_pj": types.Int64Type,
 		// Max TRES limits
-		"max_tres_per_job":     tresST,
-		"max_tres_per_node":    tresST,
+		"max_tres_per_job":      tresST,
+		"max_tres_per_node":     tresST,
 		"max_tres_mins_per_job": tresST,
 		// Grp job-count limits
 		"grp_jobs":        types.Int64Type,
@@ -103,8 +103,8 @@ func associationModelType() map[string]attr.Type {
 		// Grp wall-clock
 		"grp_wall": types.Int64Type,
 		// Grp TRES limits
-		"grp_tres":         tresST,
-		"grp_tres_mins":    tresST,
+		"grp_tres":          tresST,
+		"grp_tres_mins":     tresST,
 		"grp_tres_run_mins": tresST,
 	}
 }
@@ -157,26 +157,26 @@ func (r *userResource) Metadata(_ context.Context, req resource.MetadataRequest,
 
 func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a Slurm user with embedded account associations.",
+		MarkdownDescription: "Manages a Slurm user with embedded account associations.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				Description: "The user name (same as name).",
-				Computed:    true,
+				MarkdownDescription: "The user name (same as name).",
+				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"name": schema.StringAttribute{
-				Description: "The Slurm user name.",
-				Required:    true,
+				MarkdownDescription: "The Slurm user name.",
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"admin_level": schema.StringAttribute{
-				Description: "Administrative level: None, Operator, or Administrator.",
-				Optional:    true,
-				Computed:    true,
+				MarkdownDescription: "Administrative level: None, Operator, or Administrator.",
+				Optional:            true,
+				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -185,69 +185,69 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				},
 			},
 			"default_account": schema.StringAttribute{
-				Description: "The user's default Slurm account. Must match one of the association accounts.",
-				Required:    true,
+				MarkdownDescription: "The user's default Slurm account. Must match one of the association accounts.",
+				Required:            true,
 			},
 			"default_wc_key": schema.StringAttribute{
-				Description: "Default workload characterization key for the user.",
-				Optional:    true,
+				MarkdownDescription: "Default workload characterization key for the user.",
+				Optional:            true,
 			},
 		},
 		Blocks: map[string]schema.Block{
 			"association": schema.SetNestedBlock{
-				Description: "Account associations for this user. Each block defines the user's " +
+				MarkdownDescription: "Account associations for this user. Each block defines the user's " +
 					"membership in an account with associated limits and QOS settings. " +
 					"At least one association is required.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"account": schema.StringAttribute{
-							Description: "The Slurm account name for this association.",
-							Required:    true,
+							MarkdownDescription: "The Slurm account name for this association.",
+							Required:            true,
 						},
 						"partition": schema.StringAttribute{
-							Description: "Optional partition to scope this association to.",
-							Optional:    true,
+							MarkdownDescription: "Optional partition to scope this association to.",
+							Optional:            true,
 						},
 						"fairshare": schema.Int64Attribute{
-							Description: "Fairshare value for this association (default: 1).",
-							Optional:    true,
-							Validators:  []validator.Int64{int64validator.AtLeast(0)},
+							MarkdownDescription: "Fairshare value for this association (default: 1).",
+							Optional:            true,
+							Validators:          []validator.Int64{int64validator.AtLeast(0)},
 						},
 						"priority": schema.Int64Attribute{
-							Description: "Association-level priority (distinct from QOS priority).",
-							Optional:    true,
-							Validators:  []validator.Int64{int64validator.AtLeast(0)},
+							MarkdownDescription: "Association-level priority (distinct from QOS priority).",
+							Optional:            true,
+							Validators:          []validator.Int64{int64validator.AtLeast(0)},
 						},
 						"default_qos": schema.StringAttribute{
-							Description: "Default QOS for this association.",
-							Optional:    true,
+							MarkdownDescription: "Default QOS for this association.",
+							Optional:            true,
 						},
 						"qos": schema.ListAttribute{
-							Description: "List of allowed QOS names for this association.",
-							Optional:    true,
-							ElementType: types.StringType,
+							MarkdownDescription: "List of allowed QOS names for this association.",
+							Optional:            true,
+							ElementType:         types.StringType,
 						},
 						// Max job-count limits
 						"max_jobs": schema.Int64Attribute{
-							Description: "Maximum number of running jobs for this association (MaxJobs).",
-							Optional:    true,
-							Validators:  []validator.Int64{int64validator.AtLeast(0)},
+							MarkdownDescription: "Maximum number of running jobs for this association (MaxJobs).",
+							Optional:            true,
+							Validators:          []validator.Int64{int64validator.AtLeast(0)},
 						},
 						"max_jobs_accrue": schema.Int64Attribute{
-							Description: "Maximum pending jobs that can accrue age priority (MaxJobsAccrue).",
-							Optional:    true,
-							Validators:  []validator.Int64{int64validator.AtLeast(0)},
+							MarkdownDescription: "Maximum pending jobs that can accrue age priority (MaxJobsAccrue).",
+							Optional:            true,
+							Validators:          []validator.Int64{int64validator.AtLeast(0)},
 						},
 						"max_submit_jobs": schema.Int64Attribute{
-							Description: "Maximum number of jobs that can be submitted at once (MaxSubmitJobs).",
-							Optional:    true,
-							Validators:  []validator.Int64{int64validator.AtLeast(0)},
+							MarkdownDescription: "Maximum number of jobs that can be submitted at once (MaxSubmitJobs).",
+							Optional:            true,
+							Validators:          []validator.Int64{int64validator.AtLeast(0)},
 						},
 						// Max wall-clock
 						"max_wall_pj": schema.Int64Attribute{
-							Description: "Maximum wall-clock time per job in minutes (MaxWallDurationPerJob).",
-							Optional:    true,
-							Validators:  []validator.Int64{int64validator.AtLeast(0)},
+							MarkdownDescription: "Maximum wall-clock time per job in minutes (MaxWallDurationPerJob).",
+							Optional:            true,
+							Validators:          []validator.Int64{int64validator.AtLeast(0)},
 						},
 						// Max TRES limits
 						"max_tres_per_job":      tresOptionalSchemaAttr("Maximum TRES per job (MaxTRES). Each entry specifies type, optional name, and count."),
@@ -255,25 +255,25 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 						"max_tres_mins_per_job": tresOptionalSchemaAttr("Maximum TRES-minutes per job (MaxTRESMins)."),
 						// Grp job-count limits
 						"grp_jobs": schema.Int64Attribute{
-							Description: "Maximum running jobs across all users in this association group (GrpJobs).",
-							Optional:    true,
-							Validators:  []validator.Int64{int64validator.AtLeast(0)},
+							MarkdownDescription: "Maximum running jobs across all users in this association group (GrpJobs).",
+							Optional:            true,
+							Validators:          []validator.Int64{int64validator.AtLeast(0)},
 						},
 						"grp_jobs_accrue": schema.Int64Attribute{
-							Description: "Maximum pending jobs accruing priority across the group (GrpJobsAccrue).",
-							Optional:    true,
-							Validators:  []validator.Int64{int64validator.AtLeast(0)},
+							MarkdownDescription: "Maximum pending jobs accruing priority across the group (GrpJobsAccrue).",
+							Optional:            true,
+							Validators:          []validator.Int64{int64validator.AtLeast(0)},
 						},
 						"grp_submit_jobs": schema.Int64Attribute{
-							Description: "Maximum submitted jobs across the group (GrpSubmitJobs).",
-							Optional:    true,
-							Validators:  []validator.Int64{int64validator.AtLeast(0)},
+							MarkdownDescription: "Maximum submitted jobs across the group (GrpSubmitJobs).",
+							Optional:            true,
+							Validators:          []validator.Int64{int64validator.AtLeast(0)},
 						},
 						// Grp wall-clock
 						"grp_wall": schema.Int64Attribute{
-							Description: "Maximum cumulative wall-clock minutes for running jobs in the group (GrpWall).",
-							Optional:    true,
-							Validators:  []validator.Int64{int64validator.AtLeast(0)},
+							MarkdownDescription: "Maximum cumulative wall-clock minutes for running jobs in the group (GrpWall).",
+							Optional:            true,
+							Validators:          []validator.Int64{int64validator.AtLeast(0)},
 						},
 						// Grp TRES limits
 						"grp_tres":          tresOptionalSchemaAttr("Maximum TRES in use at once across the group (GrpTRES)."),
@@ -1032,4 +1032,3 @@ func (r *userResource) hasAccountAssociation(assocs []client.Association, accoun
 	}
 	return false
 }
-

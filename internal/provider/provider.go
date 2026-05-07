@@ -55,26 +55,26 @@ func (p *slurmProvider) Metadata(_ context.Context, _ provider.MetadataRequest, 
 // Schema defines the provider configuration attributes.
 func (p *slurmProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manage Slurm accounting resources (accounts, users, QOS) via the slurmrestd REST API.",
+		MarkdownDescription: "Manage Slurm accounting resources (accounts, users, QOS) via the slurmrestd REST API.",
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
-				Description: "The URL of the slurmrestd REST API (e.g. http://localhost:6820). " +
+				MarkdownDescription: "The URL of the slurmrestd REST API (e.g. http://localhost:6820). " +
 					"Can also be set with the SLURM_REST_URL environment variable.",
 				Optional: true,
 			},
 			"token": schema.StringAttribute{
-				Description: "JWT token for authenticating to slurmrestd. " +
+				MarkdownDescription: "JWT token for authenticating to slurmrestd. " +
 					"Can also be set with the SLURM_JWT_TOKEN environment variable.",
 				Optional:  true,
 				Sensitive: true,
 			},
 			"cluster": schema.StringAttribute{
-				Description: "The Slurm cluster name. Used to scope association operations. " +
+				MarkdownDescription: "The Slurm cluster name. Used to scope association operations. " +
 					"Can also be set with the SLURM_CLUSTER environment variable.",
 				Optional: true,
 			},
 			"api_version": schema.StringAttribute{
-				Description: "The slurmrestd API version (e.g. v0.0.42). " +
+				MarkdownDescription: "The slurmrestd API version (e.g. v0.0.42). " +
 					"Can also be set with the SLURM_API_VERSION environment variable. " +
 					"Defaults to v0.0.42 (Slurm 25.05.x).",
 				Optional: true,

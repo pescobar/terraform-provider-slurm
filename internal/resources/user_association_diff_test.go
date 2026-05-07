@@ -562,14 +562,14 @@ func TestDiffAssociations_AllNewLimitsChanged(t *testing.T) {
 	n.Priority = slurmInt(20) // changed
 	n.Max = &client.AssociationMax{
 		Jobs: &client.AssociationMaxJobs{
-			Active:   slurmInt(10),  // changed
-			Accruing: slurmInt(20),  // changed
-			Total:    slurmInt(40),  // changed
+			Active:   slurmInt(10), // changed
+			Accruing: slurmInt(20), // changed
+			Total:    slurmInt(40), // changed
 			Per: &client.AssociationMaxJobsPer{
-				Count:     slurmInt(200),  // changed
-				Accruing:  slurmInt(400),  // changed
-				Submitted: slurmInt(800),  // changed
-				WallClock: slurmInt(120),  // changed
+				Count:     slurmInt(200), // changed
+				Accruing:  slurmInt(400), // changed
+				Submitted: slurmInt(800), // changed
+				WallClock: slurmInt(120), // changed
 			},
 		},
 		TRES: &client.AssociationMaxTRES{
@@ -578,7 +578,7 @@ func TestDiffAssociations_AllNewLimitsChanged(t *testing.T) {
 				Minutes: []client.TRES{{Type: "cpu", Count: 307200}}, // changed
 				Active:  []client.TRES{{Type: "cpu", Count: 153600}}, // changed
 			},
-			Per:     &client.AssociationMaxTRESPer{Job: []client.TRES{{Type: "cpu", Count: 16}}}, // changed
+			Per:     &client.AssociationMaxTRESPer{Job: []client.TRES{{Type: "cpu", Count: 16}}},                                           // changed
 			Minutes: &client.AssociationMaxTRESMins{Per: &client.AssociationMaxTRESMinsPer{Job: []client.TRES{{Type: "cpu", Count: 960}}}}, // changed
 		},
 		Per: &client.AssociationMaxPerNode{Account: &client.AssociationMaxPerAccount{WallClock: slurmInt(2880)}}, // changed
@@ -638,9 +638,9 @@ func TestTresSlicesEqual(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "order-insensitive multi",
-			a:    []client.TRES{{Type: "cpu", Count: 8}, {Type: "mem", Count: 1024}},
-			b:    []client.TRES{{Type: "mem", Count: 1024}, {Type: "cpu", Count: 8}},
+			name:     "order-insensitive multi",
+			a:        []client.TRES{{Type: "cpu", Count: 8}, {Type: "mem", Count: 1024}},
+			b:        []client.TRES{{Type: "mem", Count: 1024}, {Type: "cpu", Count: 8}},
 			expected: true,
 		},
 		{

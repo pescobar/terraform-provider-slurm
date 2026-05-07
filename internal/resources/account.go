@@ -55,53 +55,53 @@ func (r *accountResource) Metadata(_ context.Context, req resource.MetadataReque
 
 func (r *accountResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages a Slurm account and its account-level association (limits, QOS, fairshare).",
+		MarkdownDescription: "Manages a Slurm account and its account-level association (limits, QOS, fairshare).",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				Description: "The account name (same as name).",
-				Computed:    true,
+				MarkdownDescription: "The account name (same as name).",
+				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"name": schema.StringAttribute{
-				Description: "The name of the Slurm account.",
-				Required:    true,
+				MarkdownDescription: "The name of the Slurm account.",
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"description": schema.StringAttribute{
-				Description: "A description of the account.",
-				Optional:    true,
+				MarkdownDescription: "A description of the account.",
+				Optional:            true,
 			},
 			"organization": schema.StringAttribute{
-				Description: "The organization this account belongs to.",
-				Optional:    true,
+				MarkdownDescription: "The organization this account belongs to.",
+				Optional:            true,
 			},
 			"parent_account": schema.StringAttribute{
-				Description: "The parent account name. Defaults to 'root'.",
-				Optional:    true,
+				MarkdownDescription: "The parent account name. Defaults to 'root'.",
+				Optional:            true,
 			},
 			// Account-level association attributes
 			"fairshare": schema.Int64Attribute{
-				Description: "Fairshare value for this account's association.",
-				Optional:    true,
-				Validators:  []validator.Int64{int64validator.AtLeast(0)},
+				MarkdownDescription: "Fairshare value for this account's association.",
+				Optional:            true,
+				Validators:          []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"default_qos": schema.StringAttribute{
-				Description: "Default QOS for this account's association.",
-				Optional:    true,
+				MarkdownDescription: "Default QOS for this account's association.",
+				Optional:            true,
 			},
 			"allowed_qos": schema.ListAttribute{
-				Description: "List of allowed QOS names for this account.",
-				Optional:    true,
-				ElementType: types.StringType,
+				MarkdownDescription: "List of allowed QOS names for this account.",
+				Optional:            true,
+				ElementType:         types.StringType,
 			},
 			"max_jobs": schema.Int64Attribute{
-				Description: "Maximum number of running jobs for this account's association (inherited by users unless overridden).",
-				Optional:    true,
-				Validators:  []validator.Int64{int64validator.AtLeast(0)},
+				MarkdownDescription: "Maximum number of running jobs for this account's association (inherited by users unless overridden).",
+				Optional:            true,
+				Validators:          []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"max_tres_per_job":      tresOptionalSchemaAttr("Maximum TRES per job for this account's association (MaxTRES)."),
 			"max_tres_per_node":     tresOptionalSchemaAttr("Maximum TRES per node per job for this account's association (MaxTRESPerNode)."),
