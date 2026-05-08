@@ -22,19 +22,6 @@ type Cluster struct {
 	Tres  []interface{} `json:"tres,omitempty"`
 }
 
-// GetClusters returns all clusters.
-func (c *Client) GetClusters() (*ClusterResponse, error) {
-	data, err := c.doRequest(http.MethodGet, c.slurmdbPath("clusters/"), nil)
-	if err != nil {
-		return nil, err
-	}
-	var resp ClusterResponse
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal clusters response: %w", err)
-	}
-	return &resp, nil
-}
-
 // GetCluster returns a single cluster by name.
 func (c *Client) GetCluster(name string) (*Cluster, error) {
 	path := c.slurmdbPath(fmt.Sprintf("cluster/%s", url.PathEscape(name)))
@@ -75,11 +62,3 @@ func (c *Client) EnsureCluster() error {
 	return c.CreateCluster(Cluster{Name: c.Cluster})
 }
 
-// DeleteCluster deletes a cluster by name.
-func (c *Client) DeleteCluster(name string) error {
-	c.deleteMu.Lock()
-	defer c.deleteMu.Unlock()
-	path := c.slurmdbPath(fmt.Sprintf("cluster/%s", url.PathEscape(name)))
-	_, err := c.doRequest(http.MethodDelete, path, nil)
-	return err
-}
