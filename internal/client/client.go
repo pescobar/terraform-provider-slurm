@@ -35,6 +35,11 @@ type Client struct {
 	// APIVersion is the data_parser version (e.g. "v0.0.42")
 	APIVersion string
 
+	// UserAgent is sent as the User-Agent header on every request so
+	// slurmrestd logs can attribute traffic to this provider. NewClient sets
+	// a default; the provider overrides it with the release version.
+	UserAgent string
+
 	// HTTPClient is the underlying HTTP client
 	HTTPClient *http.Client
 
@@ -65,6 +70,7 @@ func NewClient(baseURL, token, cluster, apiVersion string) *Client {
 		Token:      token,
 		Cluster:    cluster,
 		APIVersion: apiVersion,
+		UserAgent:  "terraform-provider-slurm",
 		HTTPClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},

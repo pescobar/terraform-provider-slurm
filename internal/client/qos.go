@@ -133,19 +133,6 @@ type QOSPreempt struct {
 	ExemptTime *SlurmInt `json:"exempt_time,omitempty"`
 }
 
-// GetAllQOS returns all QOS entries.
-func (c *Client) GetAllQOS() (*QOSResponse, error) {
-	data, err := c.doRequest(http.MethodGet, c.slurmdbPath("qos/"), nil)
-	if err != nil {
-		return nil, err
-	}
-	var resp QOSResponse
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal QOS response: %w", err)
-	}
-	return &resp, nil
-}
-
 // GetQOS returns a single QOS by name.
 func (c *Client) GetQOS(name string) (*QOS, error) {
 	path := c.slurmdbPath(fmt.Sprintf("qos/%s", url.PathEscape(name)))

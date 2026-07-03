@@ -136,6 +136,7 @@ func (p *slurmProvider) Configure(ctx context.Context, req provider.ConfigureReq
 
 	// Create the API client and verify connectivity
 	c := client.NewClient(endpoint, token, cluster, apiVersion)
+	c.UserAgent = "terraform-provider-slurm/" + p.version
 
 	if err := c.Ping(); err != nil {
 		resp.Diagnostics.AddError(

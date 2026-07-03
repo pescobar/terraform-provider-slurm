@@ -61,4 +61,3 @@ func (c *Client) EnsureCluster() error {
 	}
 	return c.CreateCluster(Cluster{Name: c.Cluster})
 }
-

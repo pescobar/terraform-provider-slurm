@@ -143,40 +143,6 @@ func (c *Client) GetAssociations(params map[string]string) (*AssociationResponse
 	return &resp, nil
 }
 
-// GetAssociation returns a single association by its key fields.
-func (c *Client) GetAssociation(account, user, cluster, partition string) (*Association, error) {
-	params := map[string]string{
-		"account": account,
-		"cluster": cluster,
-	}
-	if user != "" {
-		params["user"] = user
-	}
-	if partition != "" {
-		params["partition"] = partition
-	}
-
-	path := c.slurmdbPath("association/")
-	q := url.Values{}
-	for k, v := range params {
-		q.Set(k, v)
-	}
-	path = fmt.Sprintf("%s?%s", path, q.Encode())
-
-	data, err := c.doRequest(http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-	var resp AssociationResponse
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal association response: %w", err)
-	}
-	if len(resp.Associations) == 0 {
-		return nil, nil // not found
-	}
-	return &resp.Associations[0], nil
-}
-
 // CreateAssociations creates or updates associations.
 func (c *Client) CreateAssociations(associations []Association) error {
 	body := map[string][]Association{

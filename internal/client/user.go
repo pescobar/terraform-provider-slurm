@@ -47,19 +47,6 @@ type UserShort struct {
 	AdminLevel []string `json:"administrator_level,omitempty"`
 }
 
-// GetUsers returns all users.
-func (c *Client) GetUsers() (*UserResponse, error) {
-	data, err := c.doRequest(http.MethodGet, c.slurmdbPath("users/"), nil)
-	if err != nil {
-		return nil, err
-	}
-	var resp UserResponse
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal users response: %w", err)
-	}
-	return &resp, nil
-}
-
 // GetUser returns a single user by name.
 func (c *Client) GetUser(name string) (*User, error) {
 	path := c.slurmdbPath(fmt.Sprintf("user/%s", url.PathEscape(name)))

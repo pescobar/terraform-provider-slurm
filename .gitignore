@@ -43,3 +43,11 @@ docker/.env
 
 # tools
 tools/generate_import/generated
+
+# Real cluster data imported for local experiments (contains real usernames —
+# must never be committed)
+imported-cluster/
+
+# Python
+__pycache__/
+*.pyc

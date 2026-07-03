@@ -23,19 +23,6 @@ type Account struct {
 	Coordinators  []string `json:"coordinators,omitempty"`
 }
 
-// GetAccounts returns all accounts.
-func (c *Client) GetAccounts() (*AccountResponse, error) {
-	data, err := c.doRequest(http.MethodGet, c.slurmdbPath("accounts/"), nil)
-	if err != nil {
-		return nil, err
-	}
-	var resp AccountResponse
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal accounts response: %w", err)
-	}
-	return &resp, nil
-}
-
 // GetAccount returns a single account by name.
 func (c *Client) GetAccount(name string) (*Account, error) {
 	path := c.slurmdbPath(fmt.Sprintf("account/%s", url.PathEscape(name)))

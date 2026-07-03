@@ -121,6 +121,9 @@ func (c *Client) doRequestOnce(method, path string, jsonBody []byte) ([]byte, er
 	req.Header.Set("X-SLURM-USER-TOKEN", c.Token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	if c.UserAgent != "" {
+		req.Header.Set("User-Agent", c.UserAgent)
+	}
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -46,6 +47,25 @@ func configureClient(req resource.ConfigureRequest, resp *resource.ConfigureResp
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
+		)
+		return nil
+	}
+	return c
+}
+
+// configureDataSourceClient is the data-source counterpart of configureClient.
+// The two exist separately because resource.ConfigureRequest and
+// datasource.ConfigureRequest are distinct framework types with no common
+// interface.
+func configureDataSourceClient(req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) *client.Client {
+	if req.ProviderData == nil {
+		return nil
+	}
+	c, ok := req.ProviderData.(*client.Client)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Data Source Configure Type",
 			fmt.Sprintf("Expected *client.Client, got: %T", req.ProviderData),
 		)
 		return nil
