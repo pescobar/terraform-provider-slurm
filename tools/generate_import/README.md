@@ -186,3 +186,11 @@ re-running.
 - **Partition-scoped associations** are supported: if a user has an
   association scoped to a specific partition, the `partition` field is
   included in the `association {}` block.
+- **(`--layout big-cluster` only) Users with zero associations are skipped.**
+  The account-centric layout represents users as members of accounts, so a user
+  with no associations has nowhere to live and is omitted (reported as a warning
+  listing the skipped names). In practice such users can't run jobs, so this is
+  usually harmless. If you must manage association-less users, they would need
+  to be added to `data/users.yaml` and `generate.tf` extended to create
+  association-less `slurm_user` resources from those entries — this is not done
+  automatically. The `flat` layout is unaffected (it emits every user).

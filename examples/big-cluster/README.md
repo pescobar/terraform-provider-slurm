@@ -114,3 +114,10 @@ echo '{ for u, v in local.users : u => sort([for a in v.associations : a.account
   (`slurm_user.john` → `slurm_user.this["john"]`). Use `moved {}` blocks (or
   `tofu state mv`) so the switch is a no-op plan — these map to live Slurm
   entities and must not be destroyed/recreated.
+- **Users with zero associations cannot be represented** in this
+  account-centric layout — a user only exists here as a member of an account.
+  The importer (`--layout big-cluster`) skips such users and warns; single-user
+  edits should keep this in mind. Users with no associations can't run jobs, so
+  this is usually a non-issue. If you genuinely need to manage one, add it to
+  `data/users.yaml` and extend `generate.tf` to create association-less
+  `slurm_user` resources from those entries (not wired up by default).
