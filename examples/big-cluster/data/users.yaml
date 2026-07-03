@@ -1,0 +1,18 @@
+# Exceptions only. This file stays tiny.
+#
+# Add a user here only when:
+#   - they belong to more than one account (pick their login default_account), or
+#   - they need an admin_level.
+#
+# Single-account users are NOT listed here: their default account is derived
+# automatically from the one account file that lists them.
+
+# john is a member of 6 accounts (lab_physics + 5 extra: lab_bio, lab_chem,
+# teaching, admin, shared). Pick which one is his login default.
+john:
+  default_account: lab_physics
+
+# carol is a cluster admin, member of teaching + admin.
+carol:
+  admin_level: Administrator
+  default_account: admin

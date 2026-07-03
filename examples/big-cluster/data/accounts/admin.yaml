@@ -1,0 +1,11 @@
+description: "Cluster administration"
+organization: it
+fairshare: 200
+default_qos: high
+allowed_qos: [high, standard, debug]
+members:
+  - carol
+  # Object form: this membership overrides the QOS for john only.
+  - user: john
+    default_qos: debug
+    qos: [debug, standard]

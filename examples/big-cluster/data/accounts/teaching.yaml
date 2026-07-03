@@ -1,0 +1,9 @@
+description: "Teaching and courses"
+organization: education
+fairshare: 50
+default_qos: short
+allowed_qos: [short, standard, interactive]
+members:
+  - dave
+  - carol
+  - john
