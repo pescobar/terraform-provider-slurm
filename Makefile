@@ -3,9 +3,10 @@ BINARY_NAME = terraform-provider-$(PROVIDER_NAME)
 VERSION = 0.1.0
 OS_ARCH = $(shell go env GOOS)_$(shell go env GOARCH)
 
-# Pinned tfplugindocs version. Bump deliberately and re-run `make docs` —
-# template-rendering changes can shift output formatting in docs/.
-TFPLUGINDOCS_VERSION = v0.21.0
+# tfplugindocs is pinned in go.mod (kept there by tools/tools.go), so plain
+# `go run` below resolves that single pinned version. Bump it with
+# `go get github.com/hashicorp/terraform-plugin-docs@vX.Y.Z` and re-run
+# `make docs` — template-rendering changes can shift output formatting in docs/.
 
 # Local install path for OpenTofu/Terraform dev overrides
 INSTALL_DIR = ~/.terraform.d/plugins/registry.terraform.io/pescobar/$(PROVIDER_NAME)/$(VERSION)/$(OS_ARCH)
@@ -44,7 +45,7 @@ clean:
 
 # Regenerate registry documentation under docs/ from the provider schema
 # and the templates under templates/. Driven by tfplugindocs at the version
-# pinned above so generated output is reproducible across machines.
+# pinned in go.mod so generated output is reproducible across machines.
 #
 # Requirements:
 #   - `terraform` (not `tofu`) on PATH. tfplugindocs invokes `terraform init`
@@ -55,7 +56,7 @@ clean:
 #   - Network access to fetch tfplugindocs deps and (if `terraform` binary
 #     is not already cached) the terraform release archive.
 docs:
-	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@$(TFPLUGINDOCS_VERSION) generate \
+	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate \
 		--provider-name $(PROVIDER_NAME)
 
 # Verify docs/ is in sync with the schema. Regenerates into a temp dir and
@@ -63,7 +64,7 @@ docs:
 # once a `terraform` binary is part of the workflow image.
 docs-check:
 	@tmpdir=$$(mktemp -d) && \
-		go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@$(TFPLUGINDOCS_VERSION) generate \
+		go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate \
 			--provider-name $(PROVIDER_NAME) \
 			--rendered-website-dir $$tmpdir && \
 		diff -ruN docs/ $$tmpdir/ && \
