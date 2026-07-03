@@ -1,0 +1,8 @@
+description: "Biology Lab"
+organization: biology
+fairshare: 100
+default_qos: standard
+allowed_qos: [standard, long, gpu]
+members:
+  - bob
+  - john

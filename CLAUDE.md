@@ -168,10 +168,41 @@ terraform-provider-slurm/
 │       ├── user_association_diff.go
 │       └── user_association_diff_test.go
 ├── examples/
-│   └── main.tf
+│   ├── main.tf
+│   └── big-cluster/          # data-driven layout for large clusters
+│       ├── generate.tf       #   locals + for_each (inverts data → resources)
+│       ├── qos.tf
+│       └── data/             #   account-centric YAML the sysadmins edit
+│           ├── accounts/*.yaml
+│           └── users.yaml
 └── test/
     └── setup_test_data.sh
 ```
+
+### Large-cluster layout (`examples/big-cluster/`)
+
+For clusters with hundreds of accounts and thousands of users, a flat
+`users.tf` is unmaintainable. The `big-cluster` example demonstrates a
+data-driven alternative: sysadmins edit **account-centric** YAML
+(`data/accounts/<name>.yaml` holds account metadata + a member list;
+`data/users.yaml` holds only exceptions — admins and multi-account default
+picks), and `generate.tf` **inverts** that into the **user-centric**
+`slurm_user`/`slurm_account` resources the provider needs (a `slurm_user`
+carries all of its associations, so a multi-account user cannot be split across
+per-account files in raw HCL — hence the inversion). Membership is normalized
+with `try(m.user, m)` to accept both bare-string and object-with-overrides
+members; a `?:` conditional is avoided because Terraform won't unify `string`
+with `null`. Migrating a flat config to this layout changes resource addresses,
+so `moved {}` blocks (or `tofu state mv`) are required to avoid
+destroy/recreate of live Slurm entities.
+
+To import an existing cluster directly into this layout, run
+`tools/generate_import/generate_import.py --layout big-cluster` — it emits the
+same self-contained structure (data YAML + `generate.tf` + `for_each`-addressed
+`imports.tf`). The flat and big-cluster emitters share all field-extraction
+logic (`_account_fields` / `_assoc_fields`) so the two layouts cannot drift.
+The committed `examples/big-cluster/generate.tf` is produced from the same
+template as the generator's output.
 
 ## Current Status
 - All four resources implemented (cluster, account, qos, user with embedded associations).

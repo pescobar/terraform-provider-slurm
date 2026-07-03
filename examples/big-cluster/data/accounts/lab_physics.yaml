@@ -1,0 +1,8 @@
+description: "Physics Lab"
+organization: physics
+fairshare: 100
+default_qos: standard
+allowed_qos: [standard, high, long, gpu]
+members:
+  - alice
+  - john

@@ -3,6 +3,10 @@
 This directory contains a working example that creates two QOS, one account,
 and one user with an association using the Slurm provider.
 
+See [`big-cluster/`](./big-cluster/) for a data-driven, human-friendly layout
+aimed at large clusters (hundreds of accounts, thousands of users), where
+sysadmins edit account-centric YAML and `for_each` generates the resources.
+
 ## Prerequisites
 
 - [OpenTofu](https://opentofu.org/) installed

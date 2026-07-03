@@ -20,6 +20,8 @@ jobs:
             api_version: "v0.0.42"
           - slurm_version: "25.11.5"
             api_version: "v0.0.44"
+          - slurm_version: "26.05.1"
+            api_version: "v0.0.45"
 
     steps:
       - uses: actions/checkout@v6

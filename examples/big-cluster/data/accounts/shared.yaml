@@ -1,0 +1,6 @@
+description: "Shared cross-lab projects"
+organization: shared
+fairshare: 40
+default_qos: standard
+members:
+  - john

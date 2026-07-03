@@ -31,8 +31,17 @@ All flags can be provided via environment variables instead:
 | `--cluster` | `SLURM_CLUSTER` | `linux` |
 | `--api-version` | `SLURM_API_VERSION` | `v0.0.42` |
 | `--output-dir` | — | `./generated` |
+| `--layout` | — | `flat` |
 
-## Generated files
+## Layouts (`--layout`)
+
+The script can emit two layouts. Both import the exact same Slurm state; they
+differ only in how the configuration is organised on disk.
+
+### `flat` (default)
+
+One HCL block per resource. Simple and direct, but a single `users.tf` becomes
+unwieldy at thousands of users. Generated files:
 
 | File | Contents |
 |------|----------|
@@ -41,6 +50,37 @@ All flags can be provided via environment variables instead:
 | `accounts.tf` | One `slurm_account` resource per account |
 | `users.tf` | One `slurm_user` resource per user with embedded association blocks |
 | `imports.tf` | One `import {}` block per resource (QOS → accounts → users) |
+
+### `big-cluster`
+
+Recommended for large clusters. Emits an **account-centric** data layout that
+sysadmins edit by hand, plus a write-once `generate.tf` that inverts it into
+the user-centric resources the provider needs (see
+`examples/big-cluster/README.md` for the daily-ops workflow). Generated files:
+
+| File | Contents |
+|------|----------|
+| `main.tf` | `terraform {}` block, provider config, token variable |
+| `qos.tf` | One `slurm_qos` resource per QOS (plain HCL, as in flat) |
+| `generate.tf` | `locals` + `for_each` that build the resources from `data/` |
+| `data/accounts/<name>.yaml` | One file per account: metadata + member list |
+| `data/users.yaml` | Exceptions only: admins and multi-account default picks |
+| `imports.tf` | `import {}` blocks targeting the `for_each` addresses (`slurm_account.this["…"]`) |
+
+Notes specific to `big-cluster`:
+
+- **Account membership is inverted** from Slurm's user-centric associations:
+  each account file lists the users associated with it. Per-association limits
+  (QOS, fairshare, max_jobs, TRES, …) are carried as an object-form member.
+- **`data/users.yaml` stays tiny.** A user is listed only if they have an
+  `admin_level` or belong to more than one account (to pin their login
+  `default_account`). Single-account users are derived automatically.
+- **Filenames are sanitized**, but the real Slurm account name is preserved in
+  each file's `name:` key, so accounts whose names contain `/`, spaces, etc.
+  are handled correctly.
+- **Users with no associations are skipped** (they cannot be represented in an
+  account-centric layout) and reported as a warning.
+- The workflow (`tofu init` → `apply` → `apply` → `plan`) is identical to flat.
 
 ## Import workflow
 
@@ -146,3 +186,11 @@ re-running.
 - **Partition-scoped associations** are supported: if a user has an
   association scoped to a specific partition, the `partition` field is
   included in the `association {}` block.
+- **(`--layout big-cluster` only) Users with zero associations are skipped.**
+  The account-centric layout represents users as members of accounts, so a user
+  with no associations has nowhere to live and is omitted (reported as a warning
+  listing the skipped names). In practice such users can't run jobs, so this is
+  usually harmless. If you must manage association-less users, they would need
+  to be added to `data/users.yaml` and `generate.tf` extended to create
+  association-less `slurm_user` resources from those entries — this is not done
+  automatically. The `flat` layout is unaffected (it emits every user).
