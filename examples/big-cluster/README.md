@@ -5,6 +5,13 @@ painful. This example shows a maintainable alternative: sysadmins edit small,
 **account-centric** YAML files, and a thin, write-once HCL layer inverts that
 data into the **user-centric** resources the Slurm provider needs.
 
+> **Importing an existing cluster?** Don't hand-write these files. Run the
+> importer with `--layout big-cluster` to generate this exact structure
+> (plus `imports.tf`) from a live cluster:
+> `python3 tools/generate_import/generate_import.py --layout big-cluster …`.
+> See `tools/generate_import/README.md`. The files below are a hand-written
+> illustration of what it produces.
+
 ## Why invert?
 
 A `slurm_user` is a single resource that carries **all** of its associations

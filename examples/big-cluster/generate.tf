@@ -12,7 +12,8 @@
 locals {
   accounts_dir = "${path.module}/data/accounts"
 
-  # Load every data/accounts/<name>.yaml -> { "<name>" = {…} }
+  # Load every data/accounts/<stem>.yaml -> { "<stem>" = {…} }. The map key is
+  # the filename stem; the real Slurm account name lives in the `name` key.
   accounts = {
     for f in fileset(local.accounts_dir, "*.yaml") :
     trimsuffix(f, ".yaml") => yamldecode(file("${local.accounts_dir}/${f}"))
@@ -21,20 +22,33 @@ locals {
   # Per-user exceptions only. Everyone else is derived automatically.
   overrides = yamldecode(file("${path.module}/data/users.yaml"))
 
-  # Flatten account membership into normalized (user, account, …overrides)
-  # tuples. A member is either a bare string ("alice") or an object with
-  # overrides ({ user = "alice", qos = [...] }). try() handles both forms:
-  # for a string, m.user / m.default_qos error out and fall back.
+  # Flatten account membership into normalized association tuples. A member is
+  # either a bare string ("alice") or an object with overrides. try() handles
+  # both forms and fills unset attributes with null.
   memberships = flatten([
-    for acct_name, acct in local.accounts : [
+    for acct_key, acct in local.accounts : [
       for m in acct.members : {
-        account     = acct_name
-        user        = try(m.user, m) # object -> m.user, string -> m itself
-        default_qos = try(m.default_qos, null)
-        qos         = try(m.qos, null)
-        fairshare   = try(m.fairshare, null)
-        max_jobs    = try(m.max_jobs, null)
-        partition   = try(m.partition, null)
+        account               = try(acct.name, acct_key)
+        user                  = try(m.user, m)
+        partition             = try(m.partition, null)
+        fairshare             = try(m.fairshare, null)
+        priority              = try(m.priority, null)
+        default_qos           = try(m.default_qos, null)
+        qos                   = try(m.qos, null)
+        max_jobs              = try(m.max_jobs, null)
+        max_jobs_accrue       = try(m.max_jobs_accrue, null)
+        max_submit_jobs       = try(m.max_submit_jobs, null)
+        max_wall_pj           = try(m.max_wall_pj, null)
+        grp_jobs              = try(m.grp_jobs, null)
+        grp_jobs_accrue       = try(m.grp_jobs_accrue, null)
+        grp_submit_jobs       = try(m.grp_submit_jobs, null)
+        grp_wall              = try(m.grp_wall, null)
+        max_tres_per_job      = try(m.max_tres_per_job, null)
+        max_tres_per_node     = try(m.max_tres_per_node, null)
+        max_tres_mins_per_job = try(m.max_tres_mins_per_job, null)
+        grp_tres              = try(m.grp_tres, null)
+        grp_tres_mins         = try(m.grp_tres_mins, null)
+        grp_tres_run_mins     = try(m.grp_tres_run_mins, null)
       }
     ]
   ])
@@ -56,19 +70,24 @@ locals {
 resource "slurm_account" "this" {
   for_each = local.accounts
 
-  name           = each.key
-  description    = try(each.value.description, each.key)
-  organization   = try(each.value.organization, each.key)
+  name           = try(each.value.name, each.key)
+  description    = try(each.value.description, null)
+  organization   = try(each.value.organization, null)
   parent_account = try(each.value.parent_account, null)
   fairshare      = try(each.value.fairshare, null)
   default_qos    = try(each.value.default_qos, null)
   allowed_qos    = try(each.value.allowed_qos, null)
+  max_jobs       = try(each.value.max_jobs, null)
 
-  # QOS referenced by name must exist first.
-  depends_on = [
-    slurm_qos.short, slurm_qos.standard, slurm_qos.long, slurm_qos.high,
-    slurm_qos.low, slurm_qos.gpu, slurm_qos.interactive, slurm_qos.debug,
-  ]
+  max_tres_per_job      = try(each.value.max_tres_per_job, null)
+  max_tres_per_node     = try(each.value.max_tres_per_node, null)
+  max_tres_mins_per_job = try(each.value.max_tres_mins_per_job, null)
+  grp_tres              = try(each.value.grp_tres, null)
+  grp_tres_mins         = try(each.value.grp_tres_mins, null)
+  grp_tres_run_mins     = try(each.value.grp_tres_run_mins, null)
+
+  # QOS referenced by name must exist before the accounts.
+  depends_on = [slurm_qos.short, slurm_qos.standard, slurm_qos.long, slurm_qos.high, slurm_qos.low, slurm_qos.gpu, slurm_qos.interactive, slurm_qos.debug]
 }
 
 resource "slurm_user" "this" {
@@ -81,12 +100,26 @@ resource "slurm_user" "this" {
   dynamic "association" {
     for_each = each.value.associations
     content {
-      account     = association.value.account
-      default_qos = try(association.value.default_qos, null)
-      qos         = try(association.value.qos, null)
-      fairshare   = try(association.value.fairshare, null)
-      max_jobs    = try(association.value.max_jobs, null)
-      partition   = try(association.value.partition, null)
+      account               = association.value.account
+      partition             = association.value.partition
+      fairshare             = association.value.fairshare
+      priority              = association.value.priority
+      default_qos           = association.value.default_qos
+      qos                   = association.value.qos
+      max_jobs              = association.value.max_jobs
+      max_jobs_accrue       = association.value.max_jobs_accrue
+      max_submit_jobs       = association.value.max_submit_jobs
+      max_wall_pj           = association.value.max_wall_pj
+      grp_jobs              = association.value.grp_jobs
+      grp_jobs_accrue       = association.value.grp_jobs_accrue
+      grp_submit_jobs       = association.value.grp_submit_jobs
+      grp_wall              = association.value.grp_wall
+      max_tres_per_job      = association.value.max_tres_per_job
+      max_tres_per_node     = association.value.max_tres_per_node
+      max_tres_mins_per_job = association.value.max_tres_mins_per_job
+      grp_tres              = association.value.grp_tres
+      grp_tres_mins         = association.value.grp_tres_mins
+      grp_tres_run_mins     = association.value.grp_tres_run_mins
     }
   }
 

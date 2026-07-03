@@ -146,6 +146,28 @@ def _tres_list(tres: list) -> str:
     return "[\n    " + ",\n    ".join(parts) + ",\n  ]"
 
 
+def _hcl_val(val) -> str:
+    """
+    Render a native Python value as an HCL right-hand side. Used by both the
+    flat renderers below and (indirectly) as the single source of truth for how
+    a field maps to HCL. Recognised kinds: bool, int, float, str, list-of-str,
+    list-of-dict (TRES).
+    """
+    if isinstance(val, bool):
+        return "true" if val else "false"
+    if isinstance(val, int):
+        return str(val)
+    if isinstance(val, float):
+        return repr(val)
+    if isinstance(val, str):
+        return _q(val)
+    if isinstance(val, list):
+        if val and isinstance(val[0], dict):
+            return _tres_list(val)
+        return _strlist(val)
+    raise TypeError(f"cannot render HCL value of type {type(val).__name__}: {val!r}")
+
+
 def resource_block(rtype: str, label: str, attrs: list, comment: str = "") -> str:
     """
     Render a Terraform resource block.
@@ -382,40 +404,44 @@ def generate_qos(qos_list: list) -> tuple:
 # Account generation
 # ---------------------------------------------------------------------------
 
-def _account_attrs(acc: dict, assoc: Optional[dict], label_map: dict,
-                   root_qos: list) -> list:
-    """Build the (key, value) attribute list for a slurm_account resource block."""
-    attrs = [("name", _q(acc["name"]))]
+def _account_fields(acc: dict, assoc: Optional[dict], root_qos: list) -> list:
+    """
+    Extract account attributes as native (key, value) pairs — the single source
+    of truth shared by the flat (HCL) and big-cluster (YAML) emitters. Values
+    are native ints / strs / lists (of str, or of TRES dicts). Excludes
+    layout-specific bits (flat depends_on, big-cluster members).
+    """
+    fields: list = [("name", acc["name"])]
 
     if desc := (acc.get("description") or ""):
-        attrs.append(("description", _q(desc)))
+        fields.append(("description", desc))
     if org := (acc.get("organization") or ""):
-        attrs.append(("organization", _q(org)))
+        fields.append(("organization", org))
 
     # parent_account is NOT returned by the /accounts/ endpoint; read it from
     # the account-level association (user="") which always carries it.
     parent = (assoc or {}).get("parent_account") or ""
     if parent and parent not in SYSTEM_ACCOUNTS:
-        attrs.append(("parent_account", _q(parent)))
+        fields.append(("parent_account", parent))
 
     if assoc:
         shares = assoc.get("shares_raw")
         # Skip fairshare <= 1: value of 1 is Slurm's default and indistinguishable
         # from "explicitly set to 1"; 0 means "inherit from parent".
         if isinstance(shares, int) and shares > 1:
-            attrs.append(("fairshare", str(shares)))
+            fields.append(("fairshare", shares))
 
         if dflt_qos := (assoc.get("default") or {}).get("qos") or "":
-            attrs.append(("default_qos", _q(dflt_qos)))
+            fields.append(("default_qos", dflt_qos))
 
         qos_list = sorted(x for x in (assoc.get("qos") or []) if x)
         # Skip allowed_qos when it matches the root association's default qos
         # list — those accounts have no explicit qos set and are just inheriting.
         if qos_list and qos_list != root_qos:
-            attrs.append(("allowed_qos", _strlist(qos_list)))
+            fields.append(("allowed_qos", qos_list))
 
         if v := sint((assoc.get("max") or {}).get("jobs", {}).get("active")):
-            attrs.append(("max_jobs", str(v)))
+            fields.append(("max_jobs", v))
 
         # TRES limits on the account-level association
         # max.tres.per.job         → max_tres_per_job
@@ -439,9 +465,18 @@ def _account_attrs(acc: dict, assoc: Optional[dict], label_map: dict,
             ("grp_tres_run_mins",   tres_grp.get("active")),
         ):
             if entries := _norm_tres(raw):
-                attrs.append((attr, _tres_list(entries)))
+                fields.append((attr, entries))
+
+    return fields
+
+
+def _account_attrs(acc: dict, assoc: Optional[dict], label_map: dict,
+                   root_qos: list) -> list:
+    """Build the (key, value) attribute list for a slurm_account resource block."""
+    attrs = [(key, _hcl_val(val)) for key, val in _account_fields(acc, assoc, root_qos)]
 
     # depends_on — make child accounts wait for their parent to be created first.
+    parent = (assoc or {}).get("parent_account") or ""
     if parent and parent not in SYSTEM_ACCOUNTS and parent in label_map:
         attrs.append((f"depends_on = [slurm_account.{label_map[parent]}]", None))
 
@@ -512,19 +547,23 @@ def generate_accounts(accounts: list, assocs: list) -> tuple:
 # User / association generation
 # ---------------------------------------------------------------------------
 
-def _assoc_block(a: dict, acct_qos: Optional[list] = None) -> str:
-    """Render a single association {} nested block for a slurm_user resource."""
-    lines = ["association {", f"  account = {_q(a['account'])}"]
+def _assoc_fields(a: dict, acct_qos: Optional[list] = None) -> list:
+    """
+    Extract a user↔account association's attributes as native (key, value)
+    pairs, EXCLUDING the account itself. Single source of truth shared by the
+    flat (HCL association block) and big-cluster (YAML member override) emitters.
+    """
+    fields: list = []
 
     if partition := (a.get("partition") or ""):
-        lines.append(f"  partition = {_q(partition)}")
+        fields.append(("partition", partition))
 
     shares = a.get("shares_raw")
     if isinstance(shares, int) and shares > 1:
-        lines.append(f"  fairshare = {shares}")
+        fields.append(("fairshare", shares))
 
     if dflt_qos := (a.get("default") or {}).get("qos") or "":
-        lines.append(f"  default_qos = {_q(dflt_qos)}")
+        fields.append(("default_qos", dflt_qos))
 
     mx   = a.get("max") or {}
     jobs = mx.get("jobs") or {}
@@ -549,13 +588,13 @@ def _assoc_block(a: dict, acct_qos: Optional[list] = None) -> str:
         ("max_wall_pj",     per.get("wall_clock")),
     ):
         if v := sint(obj):
-            lines.append(f"  {attr} = {v}")
+            fields.append((attr, v))
 
     if v := sint(((mx.get("per") or {}).get("account") or {}).get("wall_clock")):
-        lines.append(f"  grp_wall = {v}")
+        fields.append(("grp_wall", v))
 
     if v := sint(a.get("priority")):
-        lines.append(f"  priority = {v}")
+        fields.append(("priority", v))
 
     # TRES limits
     # max.tres.per.job         → max_tres_per_job
@@ -578,15 +617,23 @@ def _assoc_block(a: dict, acct_qos: Optional[list] = None) -> str:
         ("grp_tres_run_mins",   tres_grp.get("active")),
     ):
         if entries := _norm_tres(raw):
-            lines.append(f"  {attr} = {_tres_list(entries)}")
+            fields.append((attr, entries))
 
     # QOS list — only emit when explicitly set on this association and differs
     # from the parent account's effective list.  An empty list or a list that
     # matches the account's list means the user is just inheriting.
     qos_raw = [x for x in (a.get("qos") or []) if x]
     if qos_raw and sorted(qos_raw) != (acct_qos or []):
-        lines.append(f"  qos = {_strlist(qos_raw)}")
+        fields.append(("qos", qos_raw))
 
+    return fields
+
+
+def _assoc_block(a: dict, acct_qos: Optional[list] = None) -> str:
+    """Render a single association {} nested block for a slurm_user resource."""
+    lines = ["association {", f"  account = {_q(a['account'])}"]
+    for key, val in _assoc_fields(a, acct_qos):
+        lines.append(f"  {key} = {_hcl_val(val)}")
     lines.append("}")
     return "\n".join(lines)
 
@@ -647,6 +694,325 @@ def generate_users(users: list, assocs: list) -> tuple:
         imports.append(import_block("slurm_user", label, name))
 
     return "\n\n".join(blocks), imports
+
+
+# ---------------------------------------------------------------------------
+# Big-cluster layout  (account-centric YAML data + for_each generation)
+#
+# Emits a self-contained directory:
+#   main.tf              provider config
+#   qos.tf               QOS as plain HCL (same as flat)
+#   generate.tf          locals + for_each that invert data/ into resources
+#   data/accounts/*.yaml one file per account: metadata + member list
+#   data/users.yaml      exceptions only (admins + multi-account defaults)
+#   imports.tf           import blocks targeting the for_each addresses
+# ---------------------------------------------------------------------------
+
+def import_block_indexed(rtype: str, base: str, key: str, slurm_id: str) -> str:
+    """Import block targeting a for_each instance, e.g. slurm_account.this["x"]."""
+    return f'import {{\n  to = {rtype}.{base}[{_q(key)}]\n  id = {_q(slurm_id)}\n}}'
+
+
+def _safe_stem(name: str, used: dict) -> str:
+    """
+    Map a Slurm account name to a safe, unique YAML filename stem. The real name
+    is preserved in the file's `name:` key, so the stem only needs to be a valid,
+    collision-free filename (handles names with '/', spaces, etc.).
+    """
+    stem = re.sub(r"[^A-Za-z0-9._-]", "_", name)
+    if not stem or stem in (".", ".."):
+        stem = "account"
+    base, n = stem, 1
+    while stem in used and used[stem] != name:
+        n += 1
+        stem = f"{base}_{n}"
+    used[stem] = name
+    return stem
+
+
+def _yaml_scalar(v) -> str:
+    """Render a scalar for YAML. Strings are always double-quoted (robust)."""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, float):
+        return repr(v)
+    return '"' + str(v).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _yaml_kv(key: str, val, indent: int = 0) -> str:
+    """Render a `key: value` YAML line (or block for lists), matching our types."""
+    pad = " " * indent
+    if isinstance(val, list):
+        if val and isinstance(val[0], dict):  # TRES list -> block of flow maps
+            out = [f"{pad}{key}:"]
+            for d in val:
+                inner = ", ".join(f"{k}: {_yaml_scalar(vv)}" for k, vv in d.items())
+                out.append(f"{pad}  - {{ {inner} }}")
+            return "\n".join(out)
+        inline = ", ".join(_yaml_scalar(x) for x in val)
+        return f"{pad}{key}: [{inline}]"
+    return f"{pad}{key}: {_yaml_scalar(val)}"
+
+
+def _render_account_yaml(fields: list, members: list) -> str:
+    """fields: [(key, native_value)] incl. name. members: [(user, assoc_fields)]."""
+    lines = ["# Generated by tools/generate_import/generate_import.py",
+             "# Edit `members` freely; re-running the tool overwrites this file."]
+    for key, val in fields:
+        lines.append(_yaml_kv(key, val))
+    if members:
+        lines.append("members:")
+        for user, ofields in members:
+            if not ofields:
+                lines.append(f"  - {_yaml_scalar(user)}")
+            else:
+                lines.append(f"  - user: {_yaml_scalar(user)}")
+                for k, v in ofields:
+                    lines.append(_yaml_kv(k, v, indent=4))
+    else:
+        lines.append("members: []")
+    return "\n".join(lines) + "\n"
+
+
+def _render_users_yaml(exceptions: dict) -> str:
+    lines = [
+        "# Generated by tools/generate_import/generate_import.py",
+        "#",
+        "# Exceptions only: users with an admin_level and/or members of more than",
+        "# one account (whose login default_account must be pinned). Single-account",
+        "# users are derived from the account files and are NOT listed here.",
+        "",
+    ]
+    if not exceptions:
+        lines.append("{}")
+        return "\n".join(lines) + "\n"
+    for user in sorted(exceptions):
+        info = exceptions[user]
+        lines.append(f"{_yaml_scalar(user)}:")
+        if "admin_level" in info:
+            lines.append(f"  admin_level: {_yaml_scalar(info['admin_level'])}")
+        if "default_account" in info:
+            lines.append(f"  default_account: {_yaml_scalar(info['default_account'])}")
+    return "\n".join(lines) + "\n"
+
+
+def generate_bigcluster_accounts(accounts: list, assocs: list) -> tuple:
+    """Returns (files, import_blocks) where files is [(relpath, content)]."""
+    acct_assoc: dict = {
+        a["account"]: a
+        for a in assocs
+        if (a.get("user") == "" or a.get("user") is None) and a.get("account")
+    }
+    root_assoc = acct_assoc.get("root") or {}
+    root_qos   = sorted(x for x in (root_assoc.get("qos") or []) if x)
+
+    # Invert user-level associations into members per account.
+    members_by_account: dict = defaultdict(list)
+    for a in assocs:
+        user = a.get("user") or ""
+        if not user or user in SYSTEM_USERS:
+            continue
+        acct = a.get("account") or ""
+        if not acct:
+            continue
+        parent_assoc = acct_assoc.get(acct) or {}
+        account_qos  = sorted(x for x in (parent_assoc.get("qos") or []) if x)
+        members_by_account[acct].append((user, _assoc_fields(a, account_qos)))
+
+    files, imports, used = [], [], {}
+    for acc in sorted(accounts, key=lambda a: a["name"]):
+        name = acc["name"]
+        if name in SYSTEM_ACCOUNTS:
+            continue
+        stem    = _safe_stem(name, used)
+        fields  = _account_fields(acc, acct_assoc.get(name), root_qos)
+        members = sorted(members_by_account.get(name, []), key=lambda m: m[0])
+        files.append((os.path.join("data", "accounts", f"{stem}.yaml"),
+                      _render_account_yaml(fields, members)))
+        imports.append(import_block_indexed("slurm_account", "this", stem, name))
+    return files, imports
+
+
+def generate_bigcluster_users(users: list, assocs: list) -> tuple:
+    """Returns (exceptions, import_blocks, skipped) — exceptions is user→info."""
+    user_assocs: dict = defaultdict(list)
+    for a in assocs:
+        u = a.get("user") or ""
+        if u and u not in SYSTEM_USERS:
+            user_assocs[u].append(a)
+
+    exceptions: dict = {}
+    imports: list = []
+    skipped: list = []
+    for u in sorted(users, key=lambda x: x["name"]):
+        name = u["name"]
+        if name in SYSTEM_USERS:
+            continue
+        alist = user_assocs.get(name, [])
+        if not alist:
+            # No associations => not a member of any account => cannot be
+            # represented in the account-centric layout. Warn and skip.
+            skipped.append(name)
+            continue
+
+        info: dict = {}
+        admin_levels = u.get("administrator_level") or []
+        admin = admin_levels[0] if admin_levels else ""
+        if admin and admin.lower() not in ("none", ""):
+            info["admin_level"] = admin
+        # Pin default_account only for multi-account users (single-account users
+        # derive it unambiguously from their one account file).
+        default_acct = next(
+            (a.get("account", "") for a in alist if a.get("is_default")), "")
+        if len(alist) > 1 and default_acct:
+            info["default_account"] = default_acct
+
+        if info:
+            exceptions[name] = info
+        imports.append(import_block_indexed("slurm_user", "this", name, name))
+    return exceptions, imports, skipped
+
+
+BIGCLUSTER_GENERATE_TF = '''\
+# ---------------------------------------------------------------------------
+# generate.tf — write once, rarely touched.
+#
+# Sysadmins edit the human-friendly, ACCOUNT-CENTRIC data under data/:
+#   - data/accounts/<name>.yaml : account metadata + its member list
+#   - data/users.yaml           : ONLY exceptions (admins, multi-account default)
+#
+# This file inverts that account-centric data into the USER-CENTRIC resources
+# the Slurm provider requires (a slurm_user carries all of its associations).
+# ---------------------------------------------------------------------------
+
+locals {
+  accounts_dir = "${path.module}/data/accounts"
+
+  # Load every data/accounts/<stem>.yaml -> { "<stem>" = {…} }. The map key is
+  # the filename stem; the real Slurm account name lives in the `name` key.
+  accounts = {
+    for f in fileset(local.accounts_dir, "*.yaml") :
+    trimsuffix(f, ".yaml") => yamldecode(file("${local.accounts_dir}/${f}"))
+  }
+
+  # Per-user exceptions only. Everyone else is derived automatically.
+  overrides = yamldecode(file("${path.module}/data/users.yaml"))
+
+  # Flatten account membership into normalized association tuples. A member is
+  # either a bare string ("alice") or an object with overrides. try() handles
+  # both forms and fills unset attributes with null.
+  memberships = flatten([
+    for acct_key, acct in local.accounts : [
+      for m in acct.members : {
+        account               = try(acct.name, acct_key)
+        user                  = try(m.user, m)
+        partition             = try(m.partition, null)
+        fairshare             = try(m.fairshare, null)
+        priority              = try(m.priority, null)
+        default_qos           = try(m.default_qos, null)
+        qos                   = try(m.qos, null)
+        max_jobs              = try(m.max_jobs, null)
+        max_jobs_accrue       = try(m.max_jobs_accrue, null)
+        max_submit_jobs       = try(m.max_submit_jobs, null)
+        max_wall_pj           = try(m.max_wall_pj, null)
+        grp_jobs              = try(m.grp_jobs, null)
+        grp_jobs_accrue       = try(m.grp_jobs_accrue, null)
+        grp_submit_jobs       = try(m.grp_submit_jobs, null)
+        grp_wall              = try(m.grp_wall, null)
+        max_tres_per_job      = try(m.max_tres_per_job, null)
+        max_tres_per_node     = try(m.max_tres_per_node, null)
+        max_tres_mins_per_job = try(m.max_tres_mins_per_job, null)
+        grp_tres              = try(m.grp_tres, null)
+        grp_tres_mins         = try(m.grp_tres_mins, null)
+        grp_tres_run_mins     = try(m.grp_tres_run_mins, null)
+      }
+    ]
+  ])
+
+  # Invert: group memberships by user into the shape slurm_user needs.
+  users = {
+    for u in distinct([for m in local.memberships : m.user]) : u => {
+      associations = [for m in local.memberships : m if m.user == u]
+      admin_level  = try(local.overrides[u].admin_level, null)
+      # Login default account: explicit override, else the user's (only) account.
+      default_account = try(
+        local.overrides[u].default_account,
+        [for m in local.memberships : m.account if m.user == u][0],
+      )
+    }
+  }
+}
+
+resource "slurm_account" "this" {
+  for_each = local.accounts
+
+  name           = try(each.value.name, each.key)
+  description    = try(each.value.description, null)
+  organization   = try(each.value.organization, null)
+  parent_account = try(each.value.parent_account, null)
+  fairshare      = try(each.value.fairshare, null)
+  default_qos    = try(each.value.default_qos, null)
+  allowed_qos    = try(each.value.allowed_qos, null)
+  max_jobs       = try(each.value.max_jobs, null)
+
+  max_tres_per_job      = try(each.value.max_tres_per_job, null)
+  max_tres_per_node     = try(each.value.max_tres_per_node, null)
+  max_tres_mins_per_job = try(each.value.max_tres_mins_per_job, null)
+  grp_tres              = try(each.value.grp_tres, null)
+  grp_tres_mins         = try(each.value.grp_tres_mins, null)
+  grp_tres_run_mins     = try(each.value.grp_tres_run_mins, null){account_depends_on}
+}
+
+resource "slurm_user" "this" {
+  for_each = local.users
+
+  name            = each.key
+  default_account = each.value.default_account
+  admin_level     = each.value.admin_level
+
+  dynamic "association" {
+    for_each = each.value.associations
+    content {
+      account               = association.value.account
+      partition             = association.value.partition
+      fairshare             = association.value.fairshare
+      priority              = association.value.priority
+      default_qos           = association.value.default_qos
+      qos                   = association.value.qos
+      max_jobs              = association.value.max_jobs
+      max_jobs_accrue       = association.value.max_jobs_accrue
+      max_submit_jobs       = association.value.max_submit_jobs
+      max_wall_pj           = association.value.max_wall_pj
+      grp_jobs              = association.value.grp_jobs
+      grp_jobs_accrue       = association.value.grp_jobs_accrue
+      grp_submit_jobs       = association.value.grp_submit_jobs
+      grp_wall              = association.value.grp_wall
+      max_tres_per_job      = association.value.max_tres_per_job
+      max_tres_per_node     = association.value.max_tres_per_node
+      max_tres_mins_per_job = association.value.max_tres_mins_per_job
+      grp_tres              = association.value.grp_tres
+      grp_tres_mins         = association.value.grp_tres_mins
+      grp_tres_run_mins     = association.value.grp_tres_run_mins
+    }
+  }
+
+  # Accounts (and transitively QOS) must exist before their associations.
+  depends_on = [slurm_account.this]
+}
+'''
+
+
+def generate_bigcluster_generate_tf(qos_labels: list) -> str:
+    """Fill the generate.tf template, injecting the QOS depends_on for accounts."""
+    if qos_labels:
+        refs = ", ".join(f"slurm_qos.{lbl}" for lbl in qos_labels)
+        dep = ("\n\n  # QOS referenced by name must exist before the accounts.\n"
+               f"  depends_on = [{refs}]")
+    else:
+        dep = ""
+    return BIGCLUSTER_GENERATE_TF.replace("{account_depends_on}", dep)
 
 
 # ---------------------------------------------------------------------------
@@ -727,6 +1093,14 @@ def parse_args() -> argparse.Namespace:
         default="./generated",
         help="Directory to write the generated .tf files into",
     )
+    p.add_argument(
+        "--layout",
+        choices=("flat", "big-cluster"),
+        default="flat",
+        help="Output layout: 'flat' (one HCL block per resource) or "
+             "'big-cluster' (account-centric YAML data + for_each generation, "
+             "recommended for large clusters)",
+    )
     return p.parse_args()
 
 
@@ -760,30 +1134,63 @@ def main() -> None:
     all_imports: list = []
     all_warnings: list = []
 
-    # QOS
+    # QOS — identical HCL in both layouts.
     qos_hcl, qos_imports, qos_warnings = generate_qos(qos_list)
     all_imports.extend(qos_imports)
     all_warnings.extend(qos_warnings)
 
-    # Accounts
-    acc_hcl, acc_imports = generate_accounts(accounts, assocs)
-    all_imports.extend(acc_imports)
+    if args.layout == "big-cluster":
+        # QOS labels, recomputed for the accounts' depends_on (tf_label is
+        # idempotent for an already-seen name).
+        qos_labels = [tf_label(q["name"], "qos")
+                      for q in sorted(qos_list, key=lambda x: x["name"])]
 
-    # Users
-    usr_hcl, usr_imports = generate_users(users, assocs)
-    all_imports.extend(usr_imports)
+        account_files, acc_imports = generate_bigcluster_accounts(accounts, assocs)
+        exceptions, usr_imports, skipped = generate_bigcluster_users(users, assocs)
+        all_imports.extend(acc_imports)
+        all_imports.extend(usr_imports)
 
-    print(f"Generating {len(all_imports)} resources into {out}/")
-    write(os.path.join(out, "provider.tf"),
-          generate_provider(args.endpoint, args.cluster, args.api_version))
-    write(os.path.join(out, "qos.tf"),
-          HEADER + "\n" + qos_hcl + "\n")
-    write(os.path.join(out, "accounts.tf"),
-          HEADER + "\n" + acc_hcl + "\n")
-    write(os.path.join(out, "users.tf"),
-          HEADER + "\n" + usr_hcl + "\n")
-    write(os.path.join(out, "imports.tf"),
-          HEADER + "\n" + "\n\n".join(all_imports) + "\n")
+        print(f"Generating {len(all_imports)} resources into {out}/ (big-cluster layout)")
+        write(os.path.join(out, "main.tf"),
+              generate_provider(args.endpoint, args.cluster, args.api_version))
+        write(os.path.join(out, "qos.tf"), HEADER + "\n" + qos_hcl + "\n")
+        write(os.path.join(out, "generate.tf"),
+              generate_bigcluster_generate_tf(qos_labels))
+        os.makedirs(os.path.join(out, "data", "accounts"), exist_ok=True)
+        for relpath, content in account_files:
+            write(os.path.join(out, relpath), content)
+        write(os.path.join(out, "data", "users.yaml"),
+              _render_users_yaml(exceptions))
+        write(os.path.join(out, "imports.tf"),
+              HEADER + "\n" + "\n\n".join(all_imports) + "\n")
+
+        if skipped:
+            all_warnings.append(
+                f"  {len(skipped)} user(s) have no associations and cannot be\n"
+                f"  represented in the account-centric layout — skipped:\n"
+                f"    {', '.join(skipped[:20])}"
+                + (" …" if len(skipped) > 20 else "")
+            )
+    else:
+        # Accounts
+        acc_hcl, acc_imports = generate_accounts(accounts, assocs)
+        all_imports.extend(acc_imports)
+
+        # Users
+        usr_hcl, usr_imports = generate_users(users, assocs)
+        all_imports.extend(usr_imports)
+
+        print(f"Generating {len(all_imports)} resources into {out}/")
+        write(os.path.join(out, "provider.tf"),
+              generate_provider(args.endpoint, args.cluster, args.api_version))
+        write(os.path.join(out, "qos.tf"),
+              HEADER + "\n" + qos_hcl + "\n")
+        write(os.path.join(out, "accounts.tf"),
+              HEADER + "\n" + acc_hcl + "\n")
+        write(os.path.join(out, "users.tf"),
+              HEADER + "\n" + usr_hcl + "\n")
+        write(os.path.join(out, "imports.tf"),
+              HEADER + "\n" + "\n\n".join(all_imports) + "\n")
 
     if all_warnings:
         print()

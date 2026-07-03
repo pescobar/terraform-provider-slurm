@@ -196,6 +196,14 @@ with `null`. Migrating a flat config to this layout changes resource addresses,
 so `moved {}` blocks (or `tofu state mv`) are required to avoid
 destroy/recreate of live Slurm entities.
 
+To import an existing cluster directly into this layout, run
+`tools/generate_import/generate_import.py --layout big-cluster` — it emits the
+same self-contained structure (data YAML + `generate.tf` + `for_each`-addressed
+`imports.tf`). The flat and big-cluster emitters share all field-extraction
+logic (`_account_fields` / `_assoc_fields`) so the two layouts cannot drift.
+The committed `examples/big-cluster/generate.tf` is produced from the same
+template as the generator's output.
+
 ## Current Status
 - All four resources implemented (cluster, account, qos, user with embedded associations).
 - Three bugs found and fixed (see above).
