@@ -11,7 +11,7 @@ not match the restored system row.
 ## Run
 
 ```bash
-cd examples/system-qos-warning
+cd test/fixtures/system-qos-warning
 TOKEN=$(docker exec slurmctld scontrol token lifespan=600 | sed 's/SLURM_JWT=//')
 tofu plan -var "slurm_token=$TOKEN"
 ```

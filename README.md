@@ -258,17 +258,17 @@ tofu apply  -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
 tofu destroy -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
 
 # Advanced resources
-cd examples/advanced-acceptance-tests/
+cd test/fixtures/advanced-acceptance-tests/
 tofu apply  -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
 tofu destroy -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
 
 # User association combinations
-cd examples/user-association-tests/
+cd test/fixtures/user-association-tests/
 tofu apply  -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
 tofu destroy -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
 
 # Negative tests (expected to fail with a helpful error message)
-cd examples/user-association-tests/negative/
+cd test/fixtures/user-association-tests/negative/
 tofu apply  -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
 tofu destroy -var="slurm_token=$TOKEN" -var="slurm_api_version=v0.0.42"
 ```

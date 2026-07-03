@@ -253,6 +253,49 @@ func TestDoRequest_BodyReplayedOnEachAttempt(t *testing.T) {
 	}
 }
 
+func TestDoRequest_SendsAuthAndUserAgentHeaders(t *testing.T) {
+	var gotToken, gotUA string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotToken = r.Header.Get("X-SLURM-USER-TOKEN")
+		gotUA = r.Header.Get("User-Agent")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv, 0)
+	c.UserAgent = "terraform-provider-slurm/test"
+	if _, err := c.doRequest(context.Background(), http.MethodGet, "/test", nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotToken != "test-token" {
+		t.Errorf("X-SLURM-USER-TOKEN = %q, want %q", gotToken, "test-token")
+	}
+	if gotUA != "terraform-provider-slurm/test" {
+		t.Errorf("User-Agent = %q, want %q", gotUA, "terraform-provider-slurm/test")
+	}
+}
+
+func TestDoRequest_TreatsNotModifiedAsSuccess(t *testing.T) {
+	// slurmrestd returns 304 both for no-op POSTs and for DELETE on an
+	// entity that does not exist (verified against Slurm 25.05.4). Treating
+	// it as success makes Delete idempotent when a resource was removed
+	// out-of-band.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotModified)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv, 0)
+	body, err := c.doRequest(context.Background(), http.MethodDelete, "/account/gone", nil)
+	if err != nil {
+		t.Fatalf("expected 304 to be treated as success, got %v", err)
+	}
+	if body != nil {
+		t.Errorf("expected nil body for 304, got %q", body)
+	}
+}
+
 func TestDoRequest_CancelledContextStopsRetries(t *testing.T) {
 	// The server always returns a retryable 503. Cancelling the context
 	// after the first attempt must abort the loop during the backoff sleep

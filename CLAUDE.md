@@ -153,31 +153,54 @@ go test ./internal/resources/ -v -run TestDiff
 ```
 terraform-provider-slurm/
 ├── main.go
-├── go.mod
+├── go.mod                    # also pins tfplugindocs (via tools/tools.go)
 ├── Makefile
+├── .golangci.yml             # minimal lint config (v2 standard set)
 ├── internal/
 │   ├── provider/
 │   │   └── provider.go
-│   ├── client/
-│   │   └── client.go
+│   ├── client/               # split by entity: client.go, retry.go,
+│   │   └── …                 #   cluster.go, account.go, qos.go, user.go, assoc.go
 │   └── resources/
-│       ├── cluster.go
-│       ├── account.go
-│       ├── qos.go
-│       ├── user.go
+│       ├── account.go / qos.go / user.go (+ *_data_source.go)
+│       ├── helpers.go        # shared conversion + Configure helpers
 │       ├── user_association_diff.go
-│       └── user_association_diff_test.go
-├── examples/
-│   ├── main.tf
-│   └── big-cluster/          # data-driven layout for large clusters
-│       ├── generate.tf       #   locals + for_each (inverts data → resources)
-│       ├── qos.tf
-│       └── data/             #   account-centric YAML the sysadmins edit
-│           ├── accounts/*.yaml
-│           └── users.yaml
-└── test/
-    └── setup_test_data.sh
+│       └── *_test.go
+├── examples/                 # END-USER facing only
+│   ├── main.tf               #   basic working example
+│   ├── big-cluster/          #   data-driven layout for large clusters
+│   │   ├── generate.tf       #     locals + for_each (inverts data → resources)
+│   │   ├── qos.tf
+│   │   └── data/             #     account-centric YAML the sysadmins edit
+│   │       ├── accounts/*.yaml
+│   │       └── users.yaml
+│   ├── provider/             #   registry-doc fragments (tfplugindocs reads
+│   ├── resources/            #   these paths — do not move them)
+│   └── data-sources/
+├── test/
+│   ├── setup_test_data.sh
+│   └── fixtures/             # acceptance-test configs driven by CI
+│       ├── advanced-acceptance-tests/, assoc-limits-tests/,
+│       ├── data-source-tests/, qos-acceptance-tests/,
+│       ├── system-qos-warning/, user-association-tests/,
+│       └── validator-tests/
+└── tools/
+    ├── tools.go              # keeps tfplugindocs pinned in go.mod
+    └── generate_import/      # HCL/YAML generator for existing clusters
 ```
+
+### Client conventions
+
+- **Context propagation**: every `client.Client` method takes `ctx` as its
+  first parameter; requests use `http.NewRequestWithContext` and the retry
+  backoff sleep is ctx-aware (`sleepCtx`). Cancelling the Terraform operation
+  aborts in-flight calls and pending retries.
+- **User-Agent**: every request sends `terraform-provider-slurm/<version>`
+  (set in provider Configure) for slurmrestd log attribution.
+- **Delete is idempotent**: slurmrestd returns HTTP 304 for DELETE on a
+  nonexistent account/user/QOS/association (verified against 25.05.4), and
+  `doRequestOnce` treats 304 as success — so deleting an out-of-band-removed
+  resource does not fail. Locked in by `TestDoRequest_TreatsNotModifiedAsSuccess`.
 
 ### Large-cluster layout (`examples/big-cluster/`)
 
@@ -208,10 +231,13 @@ template as the generator's output.
 - All four resources implemented (cluster, account, qos, user with embedded associations).
 - Three bugs found and fixed (see above).
 - Integration tested: apply/destroy/apply cycle works reliably with non-system QOS names.
+- CI: unit tests, golangci-lint, docs-check, and an acceptance matrix across
+  three Slurm versions (25.05 / 25.11 / 26.05) driving the configs under
+  `test/fixtures/`; releases via goreleaser on tags.
 
 ## What's Left
-- Import support needs testing
-- Acceptance tests
-- CI with GitHub Actions
+- ~~Import support needs testing~~ — done (generate_import workflow + reconcile-apply pattern).
+- ~~Acceptance tests~~ — done, example-dir style under `test/fixtures/` run by CI (not terraform-plugin-testing).
+- ~~CI with GitHub Actions~~ — done (unit-tests, lint, docs-check, acceptance matrix, release).
 - Auth improvements (JWT key file instead of short-lived tokens)
-- ~~Handle the `normal` QOS corner case~~ — done. `slurm_qos` `ValidateConfig` now emits a Terraform warning when a managed QOS name matches an entry in `systemQOSNames` (currently just `normal`). The list is package-level so additional system QOS names can be added without changing the validator. Covered by `TestSystemQOSWarning_*` unit tests and the `examples/system-qos-warning/` plan-only acceptance fixture.
+- ~~Handle the `normal` QOS corner case~~ — done. `slurm_qos` `ValidateConfig` now emits a Terraform warning when a managed QOS name matches an entry in `systemQOSNames` (currently just `normal`). The list is package-level so additional system QOS names can be added without changing the validator. Covered by `TestSystemQOSWarning_*` unit tests and the `test/fixtures/system-qos-warning/` plan-only acceptance fixture.

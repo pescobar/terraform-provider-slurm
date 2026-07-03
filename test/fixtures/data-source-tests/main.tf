@@ -6,7 +6,7 @@
 // surface key attributes so the CI step can grep for ground-truth values.
 //
 // Run:
-//   cd examples/data-source-tests
+//   cd test/fixtures/data-source-tests
 //   tofu apply -auto-approve -var "slurm_token=$SLURM_JWT_TOKEN"
 //   tofu output -json
 //   tofu destroy -auto-approve -var "slurm_token=$SLURM_JWT_TOKEN"

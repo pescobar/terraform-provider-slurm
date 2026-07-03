@@ -6,7 +6,7 @@
 // violation — no API calls are made and no Slurm state is mutated.
 //
 // Run:
-//   cd examples/validator-tests
+//   cd test/fixtures/validator-tests
 //   tofu plan -var "slurm_token=$SLURM_JWT_TOKEN"
 //
 // Expected: 8 plan-time errors (one per resource block below), each citing

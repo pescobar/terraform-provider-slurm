@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -148,6 +149,48 @@ func TestConfigureClient_WrongType(t *testing.T) {
 	req := resource.ConfigureRequest{ProviderData: "not a client"}
 	resp := &resource.ConfigureResponse{}
 	got := configureClient(req, resp)
+	if got != nil {
+		t.Errorf("expected nil for wrong type, got %#v", got)
+	}
+	if !resp.Diagnostics.HasError() {
+		t.Error("expected diagnostic error for wrong ProviderData type")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// configureDataSourceClient — mirrors the configureClient cases for the
+// datasource.ConfigureRequest/Response pair.
+// ---------------------------------------------------------------------------
+
+func TestConfigureDataSourceClient_NilProviderData(t *testing.T) {
+	req := datasource.ConfigureRequest{ProviderData: nil}
+	resp := &datasource.ConfigureResponse{}
+	got := configureDataSourceClient(req, resp)
+	if got != nil {
+		t.Errorf("expected nil for nil ProviderData, got %#v", got)
+	}
+	if resp.Diagnostics.HasError() {
+		t.Errorf("unexpected diagnostic for nil ProviderData: %v", resp.Diagnostics)
+	}
+}
+
+func TestConfigureDataSourceClient_ValidClient(t *testing.T) {
+	c := client.NewClient("http://test", "tok", "linux", "v0.0.42")
+	req := datasource.ConfigureRequest{ProviderData: c}
+	resp := &datasource.ConfigureResponse{}
+	got := configureDataSourceClient(req, resp)
+	if got != c {
+		t.Errorf("expected the same client pointer back, got %#v", got)
+	}
+	if resp.Diagnostics.HasError() {
+		t.Errorf("unexpected diagnostic: %v", resp.Diagnostics)
+	}
+}
+
+func TestConfigureDataSourceClient_WrongType(t *testing.T) {
+	req := datasource.ConfigureRequest{ProviderData: "not a client"}
+	resp := &datasource.ConfigureResponse{}
+	got := configureDataSourceClient(req, resp)
 	if got != nil {
 		t.Errorf("expected nil for wrong type, got %#v", got)
 	}

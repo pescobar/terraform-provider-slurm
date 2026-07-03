@@ -7,6 +7,12 @@ See [`big-cluster/`](./big-cluster/) for a data-driven, human-friendly layout
 aimed at large clusters (hundreds of accounts, thousands of users), where
 sysadmins edit account-centric YAML and `for_each` generates the resources.
 
+This directory contains only end-user-facing content: this basic example,
+`big-cluster/`, and the registry documentation fragments under `provider/`,
+`resources/` and `data-sources/` (read by tfplugindocs — do not move them).
+Acceptance-test configurations live in `../test/fixtures/` and are driven
+by CI.
+
 ## Prerequisites
 
 - [OpenTofu](https://opentofu.org/) installed
