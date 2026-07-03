@@ -22,3 +22,39 @@ jobs:
 
       - name: Unit tests
         run: go test ./... -v -count=1
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+
+  docs-check:
+    name: Docs in sync with schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # tfplugindocs shells out to `terraform` to introspect the provider
+      # schema (see the Makefile docs target for details).
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Verify docs/ matches the provider schema
+        run: make docs-check

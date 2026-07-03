@@ -62,10 +62,7 @@ func isRetryable(err error) bool {
 		return true
 	}
 	var netErr net.Error
-	if errors.As(err, &netErr) {
-		return true
-	}
-	return false
+	return errors.As(err, &netErr)
 }
 
 // doRequest performs an HTTP request against slurmrestd, retrying transient
@@ -136,7 +133,7 @@ func (c *Client) doRequestOnce(ctx context.Context, method, path string, jsonBod
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
