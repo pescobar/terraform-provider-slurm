@@ -98,7 +98,7 @@ func (d *qosDataSource) Read(ctx context.Context, req datasource.ReadRequest, re
 		return
 	}
 
-	qos, err := d.client.GetQOS(cfg.Name.ValueString())
+	qos, err := d.client.GetQOS(ctx, cfg.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading QOS",

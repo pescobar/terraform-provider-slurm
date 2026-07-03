@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -73,7 +74,11 @@ func isRetryable(err error) bool {
 // missing resource is a no-op, so retrying is always safe at the protocol
 // level. The body is marshalled once and replayed from a byte slice so each
 // attempt sends the exact same request.
-func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error) {
+//
+// The context is threaded into every HTTP attempt and into the backoff
+// sleeps, so cancelling it (Terraform Ctrl-C, timeouts) aborts the request
+// immediately instead of finishing the retry loop.
+func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
 	var jsonBody []byte
 	if body != nil {
 		var err error
@@ -91,9 +96,11 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if attempt > 0 {
-			c.sleep(c.RetryBackoff(attempt))
+			if err := c.sleep(ctx, c.RetryBackoff(attempt)); err != nil {
+				return nil, fmt.Errorf("request cancelled during retry backoff: %w", err)
+			}
 		}
-		respBody, err := c.doRequestOnce(method, path, jsonBody)
+		respBody, err := c.doRequestOnce(ctx, method, path, jsonBody)
 		if err == nil {
 			return respBody, nil
 		}
@@ -106,14 +113,14 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 }
 
 // doRequestOnce issues a single HTTP attempt and returns the (parsed) result.
-func (c *Client) doRequestOnce(method, path string, jsonBody []byte) ([]byte, error) {
+func (c *Client) doRequestOnce(ctx context.Context, method, path string, jsonBody []byte) ([]byte, error) {
 	var bodyReader io.Reader
 	if jsonBody != nil {
 		bodyReader = bytes.NewReader(jsonBody)
 	}
 
 	reqURL := fmt.Sprintf("%s%s", c.BaseURL, path)
-	req, err := http.NewRequest(method, reqURL, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

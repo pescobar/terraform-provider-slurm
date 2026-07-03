@@ -68,7 +68,7 @@ func (d *accountDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	}
 	name := cfg.Name.ValueString()
 
-	account, err := d.client.GetAccount(name)
+	account, err := d.client.GetAccount(ctx, name)
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading account", err.Error())
 		return
@@ -113,7 +113,7 @@ func accountAPIToState(ctx context.Context, c *client.Client, account *client.Ac
 		GrpTRESRunMins:    types.SetNull(tresElemType()),
 	}
 
-	assocResp, err := c.GetAssociations(map[string]string{
+	assocResp, err := c.GetAssociations(ctx, map[string]string{
 		"account": account.Name,
 		"cluster": c.Cluster,
 	})

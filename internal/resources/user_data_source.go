@@ -95,7 +95,7 @@ func (d *userDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	}
 	name := cfg.Name.ValueString()
 
-	user, err := d.client.GetUser(name)
+	user, err := d.client.GetUser(ctx, name)
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading user", err.Error())
 		return
@@ -134,7 +134,7 @@ func userAPIToState(ctx context.Context, c *client.Client, user *client.User, di
 		state.DefaultWCKey = types.StringValue(user.Default.WCKey)
 	}
 
-	assocResp, err := c.GetAssociations(map[string]string{
+	assocResp, err := c.GetAssociations(ctx, map[string]string{
 		"user":    user.Name,
 		"cluster": c.Cluster,
 	})

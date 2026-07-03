@@ -138,7 +138,7 @@ func (p *slurmProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	c := client.NewClient(endpoint, token, cluster, apiVersion)
 	c.UserAgent = "terraform-provider-slurm/" + p.version
 
-	if err := c.Ping(); err != nil {
+	if err := c.Ping(ctx); err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to connect to Slurm REST API",
 			"The provider failed to connect to slurmrestd at "+endpoint+": "+err.Error(),
@@ -146,7 +146,7 @@ func (p *slurmProvider) Configure(ctx context.Context, req provider.ConfigureReq
 		return
 	}
 
-	if err := c.EnsureCluster(); err != nil {
+	if err := c.EnsureCluster(ctx); err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to register Slurm cluster",
 			"The provider failed to register cluster '"+cluster+"' in slurmdbd: "+err.Error(),

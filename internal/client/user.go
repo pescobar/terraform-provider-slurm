@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -48,9 +49,9 @@ type UserShort struct {
 }
 
 // GetUser returns a single user by name.
-func (c *Client) GetUser(name string) (*User, error) {
+func (c *Client) GetUser(ctx context.Context, name string) (*User, error) {
 	path := c.slurmdbPath(fmt.Sprintf("user/%s", url.PathEscape(name)))
-	data, err := c.doRequest(http.MethodGet, path, nil)
+	data, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -65,25 +66,25 @@ func (c *Client) GetUser(name string) (*User, error) {
 }
 
 // CreateUserWithAssociation creates a user and its initial association in one call.
-func (c *Client) CreateUserWithAssociation(req UserAssociationRequest) error {
-	_, err := c.doRequest(http.MethodPost, c.slurmdbPath("users_association/"), req)
+func (c *Client) CreateUserWithAssociation(ctx context.Context, req UserAssociationRequest) error {
+	_, err := c.doRequest(ctx, http.MethodPost, c.slurmdbPath("users_association/"), req)
 	return err
 }
 
 // UpdateUser updates user properties (not associations).
-func (c *Client) UpdateUser(user User) error {
+func (c *Client) UpdateUser(ctx context.Context, user User) error {
 	body := map[string][]User{
 		"users": {user},
 	}
-	_, err := c.doRequest(http.MethodPost, c.slurmdbPath("users/"), body)
+	_, err := c.doRequest(ctx, http.MethodPost, c.slurmdbPath("users/"), body)
 	return err
 }
 
 // DeleteUser deletes a user by name.
-func (c *Client) DeleteUser(name string) error {
+func (c *Client) DeleteUser(ctx context.Context, name string) error {
 	c.deleteMu.Lock()
 	defer c.deleteMu.Unlock()
 	path := c.slurmdbPath(fmt.Sprintf("user/%s", url.PathEscape(name)))
-	_, err := c.doRequest(http.MethodDelete, path, nil)
+	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	return err
 }

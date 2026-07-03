@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -24,9 +25,9 @@ type Account struct {
 }
 
 // GetAccount returns a single account by name.
-func (c *Client) GetAccount(name string) (*Account, error) {
+func (c *Client) GetAccount(ctx context.Context, name string) (*Account, error) {
 	path := c.slurmdbPath(fmt.Sprintf("account/%s", url.PathEscape(name)))
-	data, err := c.doRequest(http.MethodGet, path, nil)
+	data, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -41,20 +42,20 @@ func (c *Client) GetAccount(name string) (*Account, error) {
 }
 
 // CreateAccount creates or updates an account.
-func (c *Client) CreateAccount(account Account) error {
+func (c *Client) CreateAccount(ctx context.Context, account Account) error {
 	body := map[string][]Account{
 		"accounts": {account},
 	}
-	_, err := c.doRequest(http.MethodPost, c.slurmdbPath("accounts/"), body)
+	_, err := c.doRequest(ctx, http.MethodPost, c.slurmdbPath("accounts/"), body)
 	return err
 }
 
 // DeleteAccount deletes an account by name.
-func (c *Client) DeleteAccount(name string) error {
+func (c *Client) DeleteAccount(ctx context.Context, name string) error {
 	c.deleteMu.Lock()
 	defer c.deleteMu.Unlock()
 	path := c.slurmdbPath(fmt.Sprintf("account/%s", url.PathEscape(name)))
-	_, err := c.doRequest(http.MethodDelete, path, nil)
+	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	return err
 }
 
@@ -86,7 +87,7 @@ type AccountShort struct {
 
 // CreateAccountWithAssociation creates an account and its cluster-level
 // association atomically via POST /accounts_association/.
-func (c *Client) CreateAccountWithAssociation(req AccountAssociationRequest) error {
-	_, err := c.doRequest(http.MethodPost, c.slurmdbPath("accounts_association/"), req)
+func (c *Client) CreateAccountWithAssociation(ctx context.Context, req AccountAssociationRequest) error {
+	_, err := c.doRequest(ctx, http.MethodPost, c.slurmdbPath("accounts_association/"), req)
 	return err
 }

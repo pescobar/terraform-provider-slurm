@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -23,7 +24,7 @@ func newTestClient(t *testing.T, srv *httptest.Server, maxRetries int) *Client {
 		HTTPClient:   srv.Client(),
 		MaxRetries:   maxRetries,
 		RetryBackoff: func(int) time.Duration { return 0 },
-		sleep:        func(time.Duration) {},
+		sleep:        func(context.Context, time.Duration) error { return nil },
 	}
 }
 
@@ -126,7 +127,7 @@ func TestDoRequest_RetriesOn503ThenSucceeds(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv, 2)
-	body, err := c.doRequest(http.MethodGet, "/test", nil)
+	body, err := c.doRequest(context.Background(), http.MethodGet, "/test", nil)
 	if err != nil {
 		t.Fatalf("expected success on retry, got %v", err)
 	}
@@ -148,7 +149,7 @@ func TestDoRequest_DoesNotRetryOn400(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv, 2)
-	_, err := c.doRequest(http.MethodPost, "/test", map[string]string{"a": "b"})
+	_, err := c.doRequest(context.Background(), http.MethodPost, "/test", map[string]string{"a": "b"})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -173,7 +174,7 @@ func TestDoRequest_DoesNotRetryOn500(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv, 2)
-	_, err := c.doRequest(http.MethodPost, "/test", nil)
+	_, err := c.doRequest(context.Background(), http.MethodPost, "/test", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -191,7 +192,7 @@ func TestDoRequest_GivesUpAfterMaxAttempts(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv, 2) // 3 attempts total
-	_, err := c.doRequest(http.MethodGet, "/test", nil)
+	_, err := c.doRequest(context.Background(), http.MethodGet, "/test", nil)
 	if err == nil {
 		t.Fatal("expected error after exhausting retries")
 	}
@@ -213,7 +214,7 @@ func TestDoRequest_NoRetriesWhenMaxRetriesZero(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv, 0)
-	_, err := c.doRequest(http.MethodGet, "/test", nil)
+	_, err := c.doRequest(context.Background(), http.MethodGet, "/test", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -240,7 +241,7 @@ func TestDoRequest_BodyReplayedOnEachAttempt(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv, 2)
-	_, err := c.doRequest(http.MethodPost, "/test", map[string]int{"x": 7})
+	_, err := c.doRequest(context.Background(), http.MethodPost, "/test", map[string]int{"x": 7})
 	if err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
@@ -249,6 +250,48 @@ func TestDoRequest_BodyReplayedOnEachAttempt(t *testing.T) {
 	}
 	if receivedBodies[0] != receivedBodies[1] {
 		t.Errorf("retry sent a different body:\nfirst:  %s\nsecond: %s", receivedBodies[0], receivedBodies[1])
+	}
+}
+
+func TestDoRequest_CancelledContextStopsRetries(t *testing.T) {
+	// The server always returns a retryable 503. Cancelling the context
+	// after the first attempt must abort the loop during the backoff sleep
+	// instead of burning through the remaining attempts.
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	c := newTestClient(t, srv, 5)
+	c.sleep = func(ctx context.Context, d time.Duration) error {
+		cancel() // simulate Ctrl-C arriving while backing off
+		return ctx.Err()
+	}
+
+	_, err := c.doRequest(ctx, http.MethodGet, "/test", nil)
+	if err == nil {
+		t.Fatal("expected error after cancellation")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled in error chain, got %v", err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Errorf("expected 1 call (cancelled during first backoff), got %d", got)
+	}
+}
+
+func TestSleepCtx_ReturnsEarlyOnCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	if err := sleepCtx(ctx, 5*time.Second); !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled, got %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("sleepCtx did not return early: took %v", elapsed)
 	}
 }
 
@@ -275,7 +318,7 @@ func TestDoRequest_RetriesOnConnectionClose(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv, 2)
-	_, err := c.doRequest(http.MethodGet, "/test", nil)
+	_, err := c.doRequest(context.Background(), http.MethodGet, "/test", nil)
 	if err != nil {
 		t.Fatalf("expected retry to recover from dropped connection, got %v", err)
 	}

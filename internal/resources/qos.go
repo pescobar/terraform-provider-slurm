@@ -449,7 +449,7 @@ func (r *qosResource) Create(ctx context.Context, req resource.CreateRequest, re
 	tflog.Debug(ctx, "Creating QOS", map[string]interface{}{"name": plan.Name.ValueString()})
 
 	qos := r.modelToAPI(ctx, plan)
-	if err := r.client.CreateQOS(qos); err != nil {
+	if err := r.client.CreateQOS(ctx, qos); err != nil {
 		resp.Diagnostics.AddError("Error creating QOS", err.Error())
 		return
 	}
@@ -457,7 +457,7 @@ func (r *qosResource) Create(ctx context.Context, req resource.CreateRequest, re
 	// Read back the full QOS so every Optional+Computed field (including all
 	// TRES sets) is resolved to a known value. Saving the plan directly would
 	// leave those fields as Unknown, which the framework rejects.
-	created, err := r.client.GetQOS(plan.Name.ValueString())
+	created, err := r.client.GetQOS(ctx, plan.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading QOS after create", err.Error())
 		return
@@ -490,7 +490,7 @@ func (r *qosResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	qos, err := r.client.GetQOS(cur.Name.ValueString())
+	qos, err := r.client.GetQOS(ctx, cur.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading QOS", err.Error())
 		return
@@ -679,7 +679,7 @@ func (r *qosResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	tflog.Debug(ctx, "Updating QOS", map[string]interface{}{"name": plan.Name.ValueString()})
 
 	qos := r.modelToAPI(ctx, plan)
-	if err := r.client.CreateQOS(qos); err != nil {
+	if err := r.client.CreateQOS(ctx, qos); err != nil {
 		resp.Diagnostics.AddError("Error updating QOS", err.Error())
 		return
 	}
@@ -699,7 +699,7 @@ func (r *qosResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 
 	tflog.Debug(ctx, "Deleting QOS", map[string]interface{}{"name": state.Name.ValueString()})
 
-	if err := r.client.DeleteQOS(state.Name.ValueString()); err != nil {
+	if err := r.client.DeleteQOS(ctx, state.Name.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Error deleting QOS", err.Error())
 		return
 	}
