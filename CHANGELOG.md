@@ -69,10 +69,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     rejects it as a cycle even when the specific instances involved
     wouldn't actually cycle at runtime. Documented as a hard limitation
     alongside the pre-existing `parent_account` drift-blindness note.
-- **`insecure_skip_verify` provider option** for connecting to slurmrestd
+- **`insecure_skip_ssl_verify` provider option** for connecting to slurmrestd
   over HTTPS with a self-signed or internally-issued certificate. TLS
   certificates are validated by default (secure by default); set
-  `insecure_skip_verify = true` or `SLURM_INSECURE_SKIP_VERIFY=true` to skip
+  `insecure_skip_ssl_verify = true` or `SLURM_INSECURE_SKIP_SSL_VERIFY=true` to skip
   validation. The provider emits a plan-time warning whenever it's enabled,
   and the setting has no effect over plain `http://`. Verified against a
   real self-signed-certificate HTTPS endpoint (both the default-secure

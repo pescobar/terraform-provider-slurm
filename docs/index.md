@@ -34,7 +34,7 @@ variable "slurm_token" {
 - `api_version` (String) The slurmrestd API version (e.g. v0.0.42). Can also be set with the SLURM_API_VERSION environment variable. Defaults to v0.0.42 (Slurm 25.05.x).
 - `cluster` (String) The Slurm cluster name. Used to scope association operations. Can also be set with the SLURM_CLUSTER environment variable.
 - `endpoint` (String) The URL of the slurmrestd REST API (e.g. http://localhost:6820). Can also be set with the SLURM_REST_URL environment variable.
-- `insecure_skip_verify` (Boolean) Skip TLS certificate verification when connecting to slurmrestd over HTTPS. Can also be set with the SLURM_INSECURE_SKIP_VERIFY environment variable (any value accepted by Go's strconv.ParseBool, e.g. `true`/`false`/`1`/`0`). **Defaults to `false`** — certificates are validated by default. Only set this to `true` for self-signed certificates in trusted, non-production environments; it disables protection against man-in-the-middle attacks. Has no effect when `endpoint` uses `http://`.
+- `insecure_skip_ssl_verify` (Boolean) Skip TLS/SSL certificate verification when connecting to slurmrestd over HTTPS. Can also be set with the SLURM_INSECURE_SKIP_SSL_VERIFY environment variable (any value accepted by Go's strconv.ParseBool, e.g. `true`/`false`/`1`/`0`). **Defaults to `false`** — certificates are validated by default. Only set this to `true` for self-signed certificates in trusted, non-production environments; it disables protection against man-in-the-middle attacks. Has no effect when `endpoint` uses `http://`.
 - `token` (String, Sensitive) JWT token for authenticating to slurmrestd. Can also be set with the SLURM_JWT_TOKEN environment variable.
 
 ## Slurm version compatibility
@@ -71,15 +71,15 @@ gracefully instead: they are null on API versions that do not expose them.
 
 The provider validates slurmrestd's TLS certificate by default. If your
 slurmrestd is fronted by HTTPS with a self-signed or internally-issued
-certificate, set `insecure_skip_verify = true` (or
-`SLURM_INSECURE_SKIP_VERIFY`) to skip validation:
+certificate, set `insecure_skip_ssl_verify = true` (or
+`SLURM_INSECURE_SKIP_SSL_VERIFY`) to skip validation:
 
 ```terraform
 provider "slurm" {
-  endpoint             = "https://slurmrestd.internal:6820"
-  token                = var.slurm_token
-  cluster              = "mycluster"
-  insecure_skip_verify = true
+  endpoint                 = "https://slurmrestd.internal:6820"
+  token                    = var.slurm_token
+  cluster                  = "mycluster"
+  insecure_skip_ssl_verify = true
 }
 ```
 

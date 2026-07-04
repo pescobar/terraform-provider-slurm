@@ -8,7 +8,7 @@ import (
 )
 
 func TestResolveBoolConfigValue(t *testing.T) {
-	const envVar = "SLURM_INSECURE_SKIP_VERIFY_TEST"
+	const envVar = "SLURM_INSECURE_SKIP_SSL_VERIFY_TEST"
 	ctx := context.Background()
 
 	tests := []struct {

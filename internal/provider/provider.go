@@ -33,11 +33,11 @@ type slurmProvider struct {
 
 // slurmProviderModel maps the provider schema to a Go struct.
 type slurmProviderModel struct {
-	Endpoint           types.String `tfsdk:"endpoint"`
-	Token              types.String `tfsdk:"token"`
-	Cluster            types.String `tfsdk:"cluster"`
-	APIVersion         types.String `tfsdk:"api_version"`
-	InsecureSkipVerify types.Bool   `tfsdk:"insecure_skip_verify"`
+	Endpoint              types.String `tfsdk:"endpoint"`
+	Token                 types.String `tfsdk:"token"`
+	Cluster               types.String `tfsdk:"cluster"`
+	APIVersion            types.String `tfsdk:"api_version"`
+	InsecureSkipSSLVerify types.Bool   `tfsdk:"insecure_skip_ssl_verify"`
 }
 
 // New returns a function that creates a new provider instance.
@@ -83,9 +83,9 @@ func (p *slurmProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp
 					"Defaults to v0.0.42 (Slurm 25.05.x).",
 				Optional: true,
 			},
-			"insecure_skip_verify": schema.BoolAttribute{
-				MarkdownDescription: "Skip TLS certificate verification when connecting to slurmrestd over " +
-					"HTTPS. Can also be set with the SLURM_INSECURE_SKIP_VERIFY environment variable " +
+			"insecure_skip_ssl_verify": schema.BoolAttribute{
+				MarkdownDescription: "Skip TLS/SSL certificate verification when connecting to slurmrestd over " +
+					"HTTPS. Can also be set with the SLURM_INSECURE_SKIP_SSL_VERIFY environment variable " +
 					"(any value accepted by Go's strconv.ParseBool, e.g. `true`/`false`/`1`/`0`). " +
 					"**Defaults to `false`** — certificates are validated by default. Only set this to " +
 					"`true` for self-signed certificates in trusted, non-production environments; it " +
@@ -114,7 +114,7 @@ func (p *slurmProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	token := resolveConfigValue(config.Token, "SLURM_JWT_TOKEN", "")
 	cluster := resolveConfigValue(config.Cluster, "SLURM_CLUSTER", "")
 	apiVersion := resolveConfigValue(config.APIVersion, "SLURM_API_VERSION", "v0.0.42")
-	insecureSkipVerify := resolveBoolConfigValue(ctx, config.InsecureSkipVerify, "SLURM_INSECURE_SKIP_VERIFY", false)
+	insecureSkipSSLVerify := resolveBoolConfigValue(ctx, config.InsecureSkipSSLVerify, "SLURM_INSECURE_SKIP_SSL_VERIFY", false)
 
 	// Validate required fields
 	if endpoint == "" {
@@ -144,16 +144,16 @@ func (p *slurmProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	}
 
 	tflog.Debug(ctx, "Creating Slurm API client", map[string]interface{}{
-		"endpoint":             endpoint,
-		"cluster":              cluster,
-		"api_version":          apiVersion,
-		"insecure_skip_verify": insecureSkipVerify,
+		"endpoint":                 endpoint,
+		"cluster":                  cluster,
+		"api_version":              apiVersion,
+		"insecure_skip_ssl_verify": insecureSkipSSLVerify,
 	})
 
-	if insecureSkipVerify {
+	if insecureSkipSSLVerify {
 		resp.Diagnostics.AddWarning(
 			"TLS certificate verification is disabled",
-			"insecure_skip_verify is true: the provider will not validate slurmrestd's TLS "+
+			"insecure_skip_ssl_verify is true: the provider will not validate slurmrestd's TLS "+
 				"certificate. This disables protection against man-in-the-middle attacks and "+
 				"should only be used with self-signed certificates in trusted, non-production "+
 				"environments.",
@@ -162,9 +162,9 @@ func (p *slurmProvider) Configure(ctx context.Context, req provider.ConfigureReq
 
 	// Create the API client and verify connectivity
 	c := client.NewClient(endpoint, token, cluster, apiVersion)
-	if insecureSkipVerify {
+	if insecureSkipSSLVerify {
 		c.HTTPClient.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // opt-in via insecure_skip_verify
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // opt-in via insecure_skip_ssl_verify
 		}
 	}
 	c.UserAgent = "terraform-provider-slurm/" + p.version
