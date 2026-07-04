@@ -8,4 +8,4 @@ members:
   # Object form: this membership overrides the QOS for john only.
   - user: john
     default_qos: debug
-    qos: [debug, standard]
+    allowed_qos: [debug, standard]

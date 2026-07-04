@@ -26,7 +26,7 @@ entities that `sacctmgr` handles — not ephemeral resources like jobs or reserv
 
 ### Association Model
 - Associations are **embedded in `slurm_user`** as `SetNestedBlock`, NOT separate resources.
-- Each association block has: account, partition, fairshare, default_qos, max_jobs, qos.
+- Each association block has: account, partition, fairshare, default_qos, max_jobs, allowed_qos.
 - The Update function diffs old vs new associations and makes individual API calls.
 - **Operation order for Update**: Create new associations → Update user defaults → Update changed associations → Delete removed associations.
 - This ordering prevents edge cases when changing default_account.
@@ -135,6 +135,37 @@ Revisit if SchedMD makes REST-created partitions persistent.
 - **Fix**: Never manage Slurm's built-in QOS names (`normal`, etc.) as provider resources. Rename all test/example QOS to non-system names (`standard`, `priority`, etc.).
 - **Note**: `SlurmInt.Infinite` uses `omitempty` to avoid sending `"infinite":false` explicitly, which is a separate but related concern.
 
+### Known limitation: `default_wc_key` cannot be read back from the REST API
+- **Symptom**: setting `slurm_user.default_wc_key` applies successfully (verified: `sacctmgr show user` confirms the value is stored server-side), but `GET /user/{name}`, `GET /users/?with_assocs=true`, and `GET /associations/` all return `default.wckey` as an empty string — regardless of API version (checked v0.0.42–v0.0.45) — and `GET /wckeys/` returns the WCKey's existence but nothing marking it as anyone's *default* (its `flags` enum only contains `DELETED`).
+- **Cause**: an upstream Slurm REST API gap, not something fixable in this provider.
+- **Consequence**: `default_wc_key` behaves correctly on write but `Read()` can never confirm or detect drift on it — the null-preservation guard (`user.Default.WCKey != "" && !state.DefaultWCKey.IsNull()`) simply never fires, since the API-returned value is always `""`. `tools/generate_import/generate_import.py` has the matching limitation: it reads from the same field and so will never emit `default_wc_key` for any user, even when one is set. See `tools/generate_import/README.md`'s Users section for the user-facing note.
+- **Prerequisite discovered along the way**: Slurm also requires a WCKey to already be registered against the user (`sacctmgr add user <name> wckeys=<key>`, or self-service `sacctmgr add wckey <key>`) before it can become that user's default — setting an unregistered WCKey as default silently no-ops (no error from the REST API; `sacctmgr` itself reports "aren't associated with new default wckey").
+
+### Known limitation: `parent_account` drift is invisible, and multi-level hierarchies race in `examples/big-cluster/`
+- **Symptom (drift-blindness, core provider)**: for an account under `root` (no parent configured, or a parent that silently failed to apply — see next point), `GET /account/{name}` returns `parent_account: null`. `slurm_account`'s `Read()` only writes `parent_account` into state when the API value is non-empty (`account.ParentAccount != "" && !state.Parent.IsNull()`), so a `null`/empty API response is indistinguishable from "field not tracked" — an out-of-band change that moves an account to `root` (or any other silent failure to apply the configured parent) is never surfaced as drift by `tofu plan`.
+- **Symptom (race, `examples/big-cluster/` specifically)**: `generate.tf`'s `resource "slurm_account" "this"` shares one `for_each` across every account; OpenTofu has no ordering guarantee between a child and its not-yet-existing parent unless there's an explicit dependency edge. Verified against a live cluster: applying a parent/child pair defined this way can create the child first, and Slurm silently defaults `parent_account` to `root` rather than erroring — combined with the drift-blindness above, `tofu plan` shows this as a clean, matching state forever after.
+- **Attempted fix, rejected**: making `parent_account` reference `slurm_account.this[...]` from within `resource "slurm_account" "this"` itself (to get automatic dependency ordering) fails with `Error: Cycle: slurm_account.this[...], slurm_account.this[...]` — OpenTofu rejects a resource's config referencing other instances of the *same* resource via a dynamic (data-dependent) index, even when the specific instances involved would never actually cycle at runtime. This appears to be a hard limitation of OpenTofu/Terraform's dependency graph, not something the provider or this config can route around locally.
+- **Current guidance**: don't set `parent_account` to another account managed by the same `data/accounts/` directory in the big-cluster layout. The `flat` layout is unaffected — `generate_accounts()` computes real account depth and per-account `depends_on` since each account gets its own resource label rather than sharing a `for_each`. See `examples/big-cluster/README.md`'s Notes section.
+
+### Known limitation: a `partition`-scoped association on a user's default account creates a phantom duplicate
+- **Symptom**: `slurm_user.Create()` first calls the atomic `users_association/` endpoint to bootstrap the user with an association for `default_account` (no `partition` in that call — see `client.UserAssociationCondition`), then separately calls `CreateAssociations()` with the full, plan-declared association list. If the config's association *for that same default account* also sets `partition`, Slurm ends up with **two** associations for that user+account: the unscoped one from the bootstrap call, and the partition-scoped one from the real config. `Read()` then reports both, and `tofu plan` shows a perpetual diff trying to remove the phantom unscoped one — which reappears every apply, since the bootstrap step recreates it.
+- **Verified against a live cluster**: reproduced with a single-account user whose one association set `partition`; confirmed via `GET /associations/?user=<name>` returning two rows (`partition: ""` and `partition: "<value>"`) for the same account.
+- **Workaround**: don't set `partition` on the association for a user's own `default_account`. It's safe on any *other* account the user belongs to (multi-account users only), since only the bootstrap call for `default_account` has this behavior. `examples/big-cluster/data/accounts/shared.yaml` demonstrates the safe case (`partition` on john's non-default account); `teaching.yaml` has a comment explaining why dave's (default-account) association doesn't use it.
+- **Not yet fixed**: a real fix would need `Create()` to either pass `partition` through the bootstrap call when the default-account association has one, or skip/delete the bootstrap association when a same-account, partition-scoped one is about to be created in the same apply.
+
+### Known limitation: TRES limits merge per-type on read, so a partial override never converges
+- **Symptom**: when an account sets `max_tres_per_job` (or any other TRES-list field) for types `{cpu, gres/gpu}` and a user's own association overrides only one of those types (e.g. just `gres/gpu`), Slurm's association read returns the **merged** set — the account's `cpu` entry plus the user's own `gpu` entry — not just the user's explicit override. If the HCL/YAML config declares only the user's intended override (`gpu` alone), `tofu plan` shows perpetual drift trying to remove the `cpu` entry Slurm keeps re-adding.
+- **Verified against a live cluster**: `GET /associations/?user=<name>&account=<account>` for an association whose config set only `{gres/gpu: 2}` returned `[{cpu: 64}, {gres/gpu: 2}]` — the `cpu: 64` came from the account's own `max_tres_per_job`, not the user's config.
+- **Workaround**: when partially overriding a TRES-list field at the association level, restate every TRES type the parent account sets on that same field, not just the type(s) you're actually changing. `examples/big-cluster/data/accounts/lab_physics.yaml` demonstrates this (john's `max_tres_per_job` override restates `cpu: 64` alongside his own `gres/gpu: 2`).
+- **Note for `tools/generate_import/generate_import.py`**: the importer's inheritance-detection fix (see the `_assoc_fields()` changelog entry) already handles this correctly by construction — it captures whatever *raw* (already-merged) TRES list Slurm returns and only skips emitting it when that whole list matches the account's own, so a partial override like this one is captured in full automatically. This limitation only bites **hand-written** configs that don't know to restate the untouched types.
+
+### Known limitation: `slurm_user.Create()` can leave an orphaned, untracked user in Slurm on a partial failure
+- **Symptom**: `Create()` bootstraps the user via an atomic `users_association/` call (Step 1, no QOS/limits), then calls `CreateAssociations()` with the full plan-declared association(s) (Step 2). If Step 1 succeeds but Step 2 fails (e.g. a QOS access-constraint violation — the same class of error `qosAccessHint` explains), the framework never calls `resp.State.Set()` before returning the error, so Terraform records **no state at all** for that resource — even though the user now genuinely exists in Slurm. `tofu destroy` can't clean up a resource it never tracked.
+- **Verified against a live cluster**: reproduced via `test/fixtures/user-association-tests/negative/` (intentionally violates the QOS-access rule). After the expected-to-fail `tofu apply`, `tofu state list` showed only the QOS/account resources — not the two `slurm_user` resources — while `sacctmgr show user` confirmed both users existed server-side. Deleting the *account* those orphaned users pointed at (via that fixture's own, in-state `tofu destroy`) cascade-deletes their associations too, leaving a genuinely **zero-association** user behind — which is exactly the input that exposed the `generate_import.py` bug below.
+- **Consequence for `tools/generate_import/generate_import.py`**: `generate_users()` (the `flat` layout) used to assume every user has at least one association and unconditionally emitted a `slurm_user` block, which fails Terraform validation for a zero-association user (`default_account` is `Required`, and at least one `association` block is required). Fixed to skip such users with a warning, mirroring `generate_bigcluster_users()`'s existing behavior for the big-cluster layout.
+- **CI mitigation, not a provider fix**: the negative-test fixture's CI step now deletes `neg_u_rule1`/`neg_u_rule2` directly via the REST API after its own `tofu destroy`, so they don't leak into later steps in the same job (in particular the `generate_import.py` acceptance step, which enumerates every user on the cluster).
+- **Not yet fixed at the provider level**: a real fix would need `Create()` to either write partial state after Step 1 succeeds (so `tofu destroy` can clean it up even when Step 2 fails), or attempt to roll back (delete) the Step-1-created user when Step 2 fails. Both are reasonable but nontrivial design choices, deliberately not made here.
+
 ## Key Implementation Notes
 
 ### Null-Preservation Pattern (import behaviour)
@@ -148,13 +179,15 @@ Consequence for import: after `tofu import`, all Optional fields start null. A
 **reconcile apply** (`tofu apply`) is required to write config-declared values to
 Slurm and populate state. After that, `tofu plan` must be clean.
 
-The `qos` field in `slurm_user` association blocks has a stricter rule: it is
-**never populated from Slurm during import** (`hasPrior && !prior.QOS.IsNull()`
-guard in `apiAssociationsToState`). Reason: if the existing qos list were loaded
-into state but config has no `qos` block, the reconcile apply would try to clear
-the list. Slurm rejects that when `default_qos` references a QOS in that list
-(`"This request would make it so some associations would not have access to their
-default qos."`).
+The `allowed_qos` field in `slurm_user` association blocks (named `qos` before
+v2.0.0 — renamed for consistency with `slurm_account.allowed_qos`, the same
+Slurm association-QOS concept at a different scope) has a stricter rule: it is
+**never populated from Slurm during import** (`hasPrior && !prior.AllowedQOS.IsNull()`
+guard in `apiAssociationsToState`). Reason: if the existing QOS list were loaded
+into state but config has no `allowed_qos` set, the reconcile apply would try to
+clear the list. Slurm rejects that when `default_qos` references a QOS in that
+list (`"This request would make it so some associations would not have access to
+their default qos."`).
 
 `slurm_qos` uses Optional+Computed fields and does NOT have this restriction —
 all QOS attributes are read from Slurm during import, and no reconcile apply is
@@ -254,8 +287,13 @@ template as the generator's output.
 
 ## Current Status
 - All four resources implemented (cluster, account, qos, user with embedded associations).
+- Data sources for every managed entity (`slurm_qos`, `slurm_account`, `slurm_user`),
+  plus read-only `slurm_partition`, and version-gated `slurm_conf`/`slurm_dbd_conf`
+  (Slurm 26.05+ / API v0.0.45+).
 - Three bugs found and fixed (see above).
 - Integration tested: apply/destroy/apply cycle works reliably with non-system QOS names.
+- `insecure_skip_verify` provider option for self-signed-certificate HTTPS endpoints
+  (secure-by-default; opt-in only, with a plan-time warning).
 - CI: unit tests, golangci-lint, docs-check, and an acceptance matrix across
   three Slurm versions (25.05 / 25.11 / 26.05) driving the configs under
   `test/fixtures/`; releases via goreleaser on tags.

@@ -318,6 +318,25 @@ jobs:
           TF_VAR_slurm_api_version: ${{ matrix.api_version }}
         run: |
           cd test/fixtures/user-association-tests/negative/
+
+          # The association-creation failure this test triggers happens
+          # AFTER the provider's atomic user-bootstrap call already created
+          # the user in Slurm, so neg_u_rule1/neg_u_rule2 exist server-side
+          # even though Create() returned an error and never wrote them into
+          # Terraform state. `tofu destroy` below only removes resources it
+          # has in state, so these two users would otherwise leak into every
+          # later step in this job (e.g. confusing generate_import.py, which
+          # enumerates every user on the cluster). Clean them up directly via
+          # the REST API regardless of which exit path below is taken.
+          cleanup_orphaned_users() {
+            for user in neg_u_rule1 neg_u_rule2; do
+              curl -sf -X DELETE \
+                -H "X-SLURM-USER-TOKEN: ${{ env.SLURM_JWT_TOKEN }}" \
+                "http://localhost:6820/slurmdb/${{ matrix.api_version }}/user/$user" \
+                >/dev/null 2>&1 || true
+            done
+          }
+
           set +e
           output=$(tofu apply -auto-approve 2>&1)
           exit_code=$?
@@ -326,6 +345,7 @@ jobs:
           if [ "$exit_code" -eq 0 ]; then
             echo "FAIL: expected tofu apply to fail but it succeeded"
             tofu destroy -auto-approve
+            cleanup_orphaned_users
             exit 1
           fi
           # Both bad users must have triggered an association error.
@@ -337,11 +357,13 @@ jobs:
             if ! echo "$output" | grep -qF "associations failed"; then
               echo "FAIL: expected 'associations failed' error for $user not found"
               tofu destroy -auto-approve
+              cleanup_orphaned_users
               exit 1
             fi
           done
           echo "PASS: both QOS constraint violations were correctly rejected"
           tofu destroy -auto-approve
+          cleanup_orphaned_users
 
       - name: Run schema validator tests (plan-time, no API calls)
         env:
@@ -658,6 +680,94 @@ jobs:
           tofu apply -auto-approve
           tofu plan -detailed-exitcode
 
+          tofu destroy -auto-approve
+
+      - name: Run big-cluster example acceptance test
+        env:
+          TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
+          TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
+          TF_VAR_slurm_api_version: ${{ matrix.api_version }}
+        run: |
+          cd examples/big-cluster/
+
+          # This is the account-centric, data-driven layout for large
+          # clusters: data/accounts/*.yaml + data/users.yaml, inverted by
+          # generate.tf into slurm_account/slurm_user resources. Exercises
+          # every account-level and per-member override field the README
+          # documents (allowed_qos, TRES limits at both scopes, job-count and
+          # wall-clock limits, partition scoping on a non-default account,
+          # default_wc_key wiring, admin_level) plus the two documented
+          # workarounds for real Slurm/provider interactions found while
+          # verifying this example (restating every TRES type on a partial
+          # per-member override; never scoping a user's default-account
+          # association to a partition).
+          tofu apply -auto-approve
+          tofu plan -detailed-exitcode
+          tofu destroy -auto-approve
+
+      - name: Run generate_import.py acceptance test (flat + big-cluster layouts)
+        env:
+          TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
+          TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
+          TF_VAR_slurm_api_version: ${{ matrix.api_version }}
+        run: |
+          # Populate the cluster using the big-cluster example (rich,
+          # multi-field, multi-account, multi-association fixture data) so
+          # the importer has a realistic and comprehensive cluster to read
+          # back. generate_import.py itself only issues GET requests, so
+          # running it twice (once per --layout) against this same live
+          # population is safe.
+          cd examples/big-cluster/
+          tofu apply -auto-approve
+          cd ../..
+
+          rm -rf /tmp/gen-flat /tmp/gen-bigcluster
+
+          echo "--- Exporting --layout flat ---"
+          python3 tools/generate_import/generate_import.py \
+            --endpoint http://localhost:6820 \
+            --token "$SLURM_JWT_TOKEN" \
+            --cluster linux \
+            --api-version "${{ matrix.api_version }}" \
+            --output-dir /tmp/gen-flat \
+            --layout flat
+          test -f /tmp/gen-flat/provider.tf
+          test -f /tmp/gen-flat/qos.tf
+          test -f /tmp/gen-flat/accounts.tf
+          test -f /tmp/gen-flat/users.tf
+          test -f /tmp/gen-flat/imports.tf
+
+          echo "--- Exporting --layout big-cluster ---"
+          python3 tools/generate_import/generate_import.py \
+            --endpoint http://localhost:6820 \
+            --token "$SLURM_JWT_TOKEN" \
+            --cluster linux \
+            --api-version "${{ matrix.api_version }}" \
+            --output-dir /tmp/gen-bigcluster \
+            --layout big-cluster
+          test -f /tmp/gen-bigcluster/main.tf
+          test -f /tmp/gen-bigcluster/qos.tf
+          test -f /tmp/gen-bigcluster/generate.tf
+          test -f /tmp/gen-bigcluster/data/users.yaml
+          test -n "$(ls /tmp/gen-bigcluster/data/accounts/*.yaml 2>/dev/null)"
+
+          echo "--- Verifying --layout flat: import -> reconcile -> clean plan ---"
+          cd /tmp/gen-flat
+          tofu init
+          tofu apply -auto-approve
+          tofu apply -auto-approve
+          tofu plan -detailed-exitcode
+
+          echo "--- Verifying --layout big-cluster: import -> reconcile -> clean plan ---"
+          cd /tmp/gen-bigcluster
+          tofu init
+          tofu apply -auto-approve
+          tofu apply -auto-approve
+          tofu plan -detailed-exitcode
+
+          # Tear down the live Slurm state via either generated config — both
+          # reference the same underlying accounts/users/QOS imported from the
+          # same live cluster.
           tofu destroy -auto-approve
 
       - name: Collect Docker logs on failure

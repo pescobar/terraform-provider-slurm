@@ -415,7 +415,13 @@ def _account_fields(acc: dict, assoc: Optional[dict], root_qos: list) -> list:
 
     if desc := (acc.get("description") or ""):
         fields.append(("description", desc))
-    if org := (acc.get("organization") or ""):
+    # organization defaults to the account name in Slurm when not explicitly
+    # set (verified against a live cluster: sacctmgr shows Organization ==
+    # Account for an account created without one) -- skip it in that case,
+    # same "indistinguishable from Slurm's own default" rule already applied
+    # to fairshare below.
+    org = acc.get("organization") or ""
+    if org and org != acc["name"]:
         fields.append(("organization", org))
 
     # parent_account is NOT returned by the /accounts/ endpoint; read it from
@@ -533,12 +539,26 @@ def generate_accounts(accounts: list, assocs: list) -> tuple:
 # User / association generation
 # ---------------------------------------------------------------------------
 
-def _assoc_fields(a: dict, acct_qos: Optional[list] = None) -> list:
+def _assoc_fields(a: dict, acct: Optional[dict] = None) -> list:
     """
     Extract a user↔account association's attributes as native (key, value)
     pairs, EXCLUDING the account itself. Single source of truth shared by the
     flat (HCL association block) and big-cluster (YAML member override) emitters.
+
+    `acct` is the parent account-level association (user=""), used to detect
+    values the user association is merely INHERITING rather than explicitly
+    overriding. Empirically verified against a live cluster: Slurm's REST API
+    resolves default_qos, max_jobs, max_tres_per_job, max_tres_per_node, and
+    max_tres_mins_per_job to the account's own effective value even when the
+    user's association never set them — there is no separate flag marking a
+    value as inherited vs. explicit. A naive "emit whatever is non-zero"
+    reading would therefore convert implicit inheritance into a permanent
+    per-user pin, silently breaking future account-limit changes from
+    propagating to that user. grp_tres / grp_tres_mins / grp_tres_run_mins
+    do NOT inherit this way (also verified) and are always the association's
+    own explicit value, so they are emitted unconditionally.
     """
+    acct = acct or {}
     fields: list = []
 
     if partition := (a.get("partition") or ""):
@@ -548,24 +568,34 @@ def _assoc_fields(a: dict, acct_qos: Optional[list] = None) -> list:
     if isinstance(shares, int) and shares > 1:
         fields.append(("fairshare", shares))
 
-    if dflt_qos := (a.get("default") or {}).get("qos") or "":
+    # default_qos — see inheritance note in the docstring.
+    dflt_qos      = (a.get("default") or {}).get("qos") or ""
+    acct_dflt_qos = (acct.get("default") or {}).get("qos") or ""
+    if dflt_qos and dflt_qos != acct_dflt_qos:
         fields.append(("default_qos", dflt_qos))
 
-    mx   = a.get("max") or {}
-    jobs = mx.get("jobs") or {}
-    per  = jobs.get("per") or {}
+    mx      = a.get("max") or {}
+    jobs    = mx.get("jobs") or {}
+    per     = jobs.get("per") or {}
+    acct_mx = acct.get("max") or {}
 
-    # Job-count limits
-    # max.jobs.active    → max_jobs
-    # max.jobs.accruing  → max_jobs_accrue
-    # max.jobs.total     → max_submit_jobs
-    # max.jobs.per.count     → grp_jobs
-    # max.jobs.per.accruing  → grp_jobs_accrue
-    # max.jobs.per.submitted → grp_submit_jobs
+    # max_jobs — see inheritance note in the docstring.
+    # max.jobs.active → max_jobs
+    acct_max_jobs = sint((acct_mx.get("jobs") or {}).get("active"))
+    if v := sint(jobs.get("active")):
+        if v != acct_max_jobs:
+            fields.append(("max_jobs", v))
+
+    # The remaining job-count / wall-clock limits below have no slurm_account
+    # equivalent to inherit from in this provider's schema, so whatever Slurm
+    # returns here is always the association's own explicit value.
+    # max.jobs.accruing       → max_jobs_accrue
+    # max.jobs.total          → max_submit_jobs
+    # max.jobs.per.count      → grp_jobs
+    # max.jobs.per.accruing   → grp_jobs_accrue
+    # max.jobs.per.submitted  → grp_submit_jobs
     # max.jobs.per.wall_clock → max_wall_pj  (minutes)
-    # max.per.account.wall_clock → grp_wall (minutes)
     for attr, obj in (
-        ("max_jobs",        jobs.get("active")),
         ("max_jobs_accrue", jobs.get("accruing")),
         ("max_submit_jobs", jobs.get("total")),
         ("grp_jobs",        per.get("count")),
@@ -576,6 +606,7 @@ def _assoc_fields(a: dict, acct_qos: Optional[list] = None) -> list:
         if v := sint(obj):
             fields.append((attr, v))
 
+    # max.per.account.wall_clock → grp_wall (minutes)
     if v := sint(((mx.get("per") or {}).get("account") or {}).get("wall_clock")):
         fields.append(("grp_wall", v))
 
@@ -594,38 +625,57 @@ def _assoc_fields(a: dict, acct_qos: Optional[list] = None) -> list:
     tres_mins = tres.get("minutes") or {}
     tres_grp  = tres.get("group") or {}
 
+    acct_tres      = acct_mx.get("tres") or {}
+    acct_tres_per  = acct_tres.get("per") or {}
+    acct_tres_mins = acct_tres.get("minutes") or {}
+
+    # max_tres_per_job / max_tres_per_node / max_tres_mins_per_job — see
+    # inheritance note in the docstring.
+    for attr, raw, acct_raw in (
+        ("max_tres_per_job", tres_per.get("job"), acct_tres_per.get("job")),
+        ("max_tres_per_node", tres_per.get("node"), acct_tres_per.get("node")),
+        ("max_tres_mins_per_job",
+         (tres_mins.get("per") or {}).get("job"),
+         (acct_tres_mins.get("per") or {}).get("job")),
+    ):
+        entries = _norm_tres(raw)
+        if entries and entries != _norm_tres(acct_raw):
+            fields.append((attr, entries))
+
+    # grp_tres / grp_tres_mins / grp_tres_run_mins do not inherit — always
+    # the association's own explicit value (see docstring).
     for attr, raw in (
-        ("max_tres_per_job",    tres_per.get("job")),
-        ("max_tres_per_node",   tres_per.get("node")),
-        ("max_tres_mins_per_job", (tres_mins.get("per") or {}).get("job")),
-        ("grp_tres",            tres.get("total")),
-        ("grp_tres_mins",       tres_grp.get("minutes")),
-        ("grp_tres_run_mins",   tres_grp.get("active")),
+        ("grp_tres",          tres.get("total")),
+        ("grp_tres_mins",     tres_grp.get("minutes")),
+        ("grp_tres_run_mins", tres_grp.get("active")),
     ):
         if entries := _norm_tres(raw):
             fields.append((attr, entries))
 
-    # QOS list — only emit when explicitly set on this association and differs
+    # allowed_qos — only emit when explicitly set on this association and differs
     # from the parent account's effective list.  An empty list or a list that
     # matches the account's list means the user is just inheriting.
-    qos_raw = [x for x in (a.get("qos") or []) if x]
-    if qos_raw and sorted(qos_raw) != (acct_qos or []):
-        fields.append(("qos", qos_raw))
+    # (a.get("qos") reads the raw Slurm API field, which is still named "qos" on
+    # the wire; the output key is the provider's "allowed_qos" attribute name.)
+    qos_raw  = [x for x in (a.get("qos") or []) if x]
+    acct_qos = sorted(x for x in (acct.get("qos") or []) if x)
+    if qos_raw and sorted(qos_raw) != acct_qos:
+        fields.append(("allowed_qos", qos_raw))
 
     return fields
 
 
-def _assoc_block(a: dict, acct_qos: Optional[list] = None) -> str:
+def _assoc_block(a: dict, acct: Optional[dict] = None) -> str:
     """Render a single association {} nested block for a slurm_user resource."""
     lines = ["association {", f"  account = {_q(a['account'])}"]
-    for key, val in _assoc_fields(a, acct_qos):
+    for key, val in _assoc_fields(a, acct):
         lines.append(f"  {key} = {_hcl_val(val)}")
     lines.append("}")
     return "\n".join(lines)
 
 
 def generate_users(users: list, assocs: list) -> tuple:
-    """Returns (hcl_content, import_blocks)."""
+    """Returns (hcl_content, import_blocks, skipped)."""
     # Account-level association lookup used to filter inherited QOS lists.
     acct_assoc: dict = {
         a["account"]: a
@@ -640,12 +690,23 @@ def generate_users(users: list, assocs: list) -> tuple:
         if user and user not in SYSTEM_USERS:
             user_assocs[user].append(a)
 
-    blocks  = []
-    imports = []
+    blocks   = []
+    imports  = []
+    skipped  = []
 
     for u in sorted(users, key=lambda x: x["name"]):
         name = u["name"]
         if name in SYSTEM_USERS:
+            continue
+
+        # A slurm_user resource requires default_account and at least one
+        # association block -- both are impossible to populate for a user
+        # with no associations at all (e.g. one left over from an
+        # out-of-band failure partway through creation). Skip and warn
+        # rather than emit HCL that fails validation, matching the
+        # zero-association handling already in generate_bigcluster_users().
+        if not user_assocs[name]:
+            skipped.append(name)
             continue
 
         label = tf_label(name, "user")
@@ -668,18 +729,21 @@ def generate_users(users: list, assocs: list) -> tuple:
         if default_acct:
             attrs.append(("default_account", _q(default_acct)))
 
+        wckey = (u.get("default") or {}).get("wckey") or ""
+        if wckey:
+            attrs.append(("default_wc_key", _q(wckey)))
+
         # One association block per user+account combination, sorted for
         # deterministic output.
         for a in sorted(user_assocs[name], key=lambda x: x.get("account", "")):
             account_name = a.get("account") or ""
             parent_assoc = acct_assoc.get(account_name) or {}
-            account_qos  = sorted(x for x in (parent_assoc.get("qos") or []) if x)
-            attrs.append((_assoc_block(a, account_qos), None))
+            attrs.append((_assoc_block(a, parent_assoc), None))
 
         blocks.append(resource_block("slurm_user", label, attrs))
         imports.append(import_block("slurm_user", label, name))
 
-    return "\n\n".join(blocks), imports
+    return "\n\n".join(blocks), imports, skipped
 
 
 # ---------------------------------------------------------------------------
@@ -766,9 +830,10 @@ def _render_users_yaml(exceptions: dict) -> str:
     lines = [
         "# Generated by tools/generate_import/generate_import.py",
         "#",
-        "# Exceptions only: users with an admin_level and/or members of more than",
-        "# one account (whose login default_account must be pinned). Single-account",
-        "# users are derived from the account files and are NOT listed here.",
+        "# Exceptions only: users with an admin_level, a default_wc_key, and/or",
+        "# members of more than one account (whose login default_account must be",
+        "# pinned). Single-account users with none of these are derived from the",
+        "# account files and are NOT listed here.",
         "",
     ]
     if not exceptions:
@@ -779,6 +844,8 @@ def _render_users_yaml(exceptions: dict) -> str:
         lines.append(f"{_yaml_scalar(user)}:")
         if "admin_level" in info:
             lines.append(f"  admin_level: {_yaml_scalar(info['admin_level'])}")
+        if "default_wc_key" in info:
+            lines.append(f"  default_wc_key: {_yaml_scalar(info['default_wc_key'])}")
         if "default_account" in info:
             lines.append(f"  default_account: {_yaml_scalar(info['default_account'])}")
     return "\n".join(lines) + "\n"
@@ -804,8 +871,7 @@ def generate_bigcluster_accounts(accounts: list, assocs: list) -> tuple:
         if not acct:
             continue
         parent_assoc = acct_assoc.get(acct) or {}
-        account_qos  = sorted(x for x in (parent_assoc.get("qos") or []) if x)
-        members_by_account[acct].append((user, _assoc_fields(a, account_qos)))
+        members_by_account[acct].append((user, _assoc_fields(a, parent_assoc)))
 
     files, imports, used = [], [], {}
     for acc in sorted(accounts, key=lambda a: a["name"]):
@@ -848,6 +914,9 @@ def generate_bigcluster_users(users: list, assocs: list) -> tuple:
         admin = admin_levels[0] if admin_levels else ""
         if admin and admin.lower() not in ("none", ""):
             info["admin_level"] = admin
+        wckey = (u.get("default") or {}).get("wckey") or ""
+        if wckey:
+            info["default_wc_key"] = wckey
         # Pin default_account only for multi-account users (single-account users
         # derive it unambiguously from their one account file).
         default_acct = next(
@@ -898,7 +967,7 @@ locals {
         fairshare             = try(m.fairshare, null)
         priority              = try(m.priority, null)
         default_qos           = try(m.default_qos, null)
-        qos                   = try(m.qos, null)
+        allowed_qos           = try(m.allowed_qos, null)
         max_jobs              = try(m.max_jobs, null)
         max_jobs_accrue       = try(m.max_jobs_accrue, null)
         max_submit_jobs       = try(m.max_submit_jobs, null)
@@ -920,8 +989,9 @@ locals {
   # Invert: group memberships by user into the shape slurm_user needs.
   users = {
     for u in distinct([for m in local.memberships : m.user]) : u => {
-      associations = [for m in local.memberships : m if m.user == u]
-      admin_level  = try(local.overrides[u].admin_level, null)
+      associations   = [for m in local.memberships : m if m.user == u]
+      admin_level    = try(local.overrides[u].admin_level, null)
+      default_wc_key = try(local.overrides[u].default_wc_key, null)
       # Login default account: explicit override, else the user's (only) account.
       default_account = try(
         local.overrides[u].default_account,
@@ -957,6 +1027,7 @@ resource "slurm_user" "this" {
   name            = each.key
   default_account = each.value.default_account
   admin_level     = each.value.admin_level
+  default_wc_key  = each.value.default_wc_key
 
   dynamic "association" {
     for_each = each.value.associations
@@ -966,7 +1037,7 @@ resource "slurm_user" "this" {
       fairshare             = association.value.fairshare
       priority              = association.value.priority
       default_qos           = association.value.default_qos
-      qos                   = association.value.qos
+      allowed_qos           = association.value.allowed_qos
       max_jobs              = association.value.max_jobs
       max_jobs_accrue       = association.value.max_jobs_accrue
       max_submit_jobs       = association.value.max_submit_jobs
@@ -1163,7 +1234,7 @@ def main() -> None:
         all_imports.extend(acc_imports)
 
         # Users
-        usr_hcl, usr_imports = generate_users(users, assocs)
+        usr_hcl, usr_imports, skipped = generate_users(users, assocs)
         all_imports.extend(usr_imports)
 
         print(f"Generating {len(all_imports)} resources into {out}/")
@@ -1177,6 +1248,15 @@ def main() -> None:
               HEADER + "\n" + usr_hcl + "\n")
         write(os.path.join(out, "imports.tf"),
               HEADER + "\n" + "\n\n".join(all_imports) + "\n")
+
+        if skipped:
+            all_warnings.append(
+                f"  {len(skipped)} user(s) have no associations and cannot be\n"
+                f"  represented as a slurm_user resource (default_account and at\n"
+                f"  least one association are both required) — skipped:\n"
+                f"    {', '.join(skipped[:20])}"
+                + (" …" if len(skipped) > 20 else "")
+            )
 
     if all_warnings:
         print()

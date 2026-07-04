@@ -120,14 +120,25 @@ provider "slurm" {
 }
 ```
 
-All four arguments can also be supplied via environment variables:
+All arguments can also be supplied via environment variables:
 
-| Argument      | Environment variable   | Default   |
-|---------------|------------------------|-----------|
-| `endpoint`    | `SLURM_REST_URL`       | —         |
-| `token`       | `SLURM_JWT_TOKEN`      | —         |
-| `cluster`     | `SLURM_CLUSTER`        | —         |
-| `api_version` | `SLURM_API_VERSION`    | `v0.0.42` |
+| Argument               | Environment variable          | Default   |
+|------------------------|--------------------------------|-----------|
+| `endpoint`             | `SLURM_REST_URL`               | —         |
+| `token`                | `SLURM_JWT_TOKEN`               | —         |
+| `cluster`              | `SLURM_CLUSTER`                 | —         |
+| `api_version`          | `SLURM_API_VERSION`             | `v0.0.42` |
+| `insecure_skip_verify` | `SLURM_INSECURE_SKIP_VERIFY`    | `false`   |
+
+### Connecting over HTTPS with a self-signed certificate
+
+TLS certificates are validated by default. If slurmrestd is fronted by HTTPS
+with a self-signed or internally-issued certificate, set
+`insecure_skip_verify = true` (or `SLURM_INSECURE_SKIP_VERIFY=true`) to skip
+validation. This disables protection against man-in-the-middle attacks —
+only use it for self-signed certificates in trusted, non-production
+environments. The provider emits a plan-time warning whenever it's enabled,
+and the setting has no effect when `endpoint` uses `http://`.
 
 ## Resources
 

@@ -93,10 +93,10 @@ null state after import and will never be reconciled — meaning:
 - A future out-of-band change to those fields in Slurm will not be detected
   as drift.
 
-If you are importing a user whose associations already have a `qos` list, a
-`default_qos`, or fairshare limits set in Slurm, declare those values in your
-`association` block before importing so the reconcile apply confirms rather
-than changes them:
+If you are importing a user whose associations already have an `allowed_qos`
+list, a `default_qos`, or fairshare limits set in Slurm, declare those values
+in your `association` block before importing so the reconcile apply confirms
+rather than changes them:
 
 ```hcl
 resource "slurm_user" "alice" {
@@ -107,7 +107,7 @@ resource "slurm_user" "alice" {
     account     = "physics"
     fairshare   = 50               # declare if already set in Slurm
     default_qos = "standard"       # declare if already set in Slurm
-    qos         = ["standard", "priority"]  # declare if already set in Slurm
+    allowed_qos = ["standard", "priority"]  # declare if already set in Slurm
   }
 }
 ```

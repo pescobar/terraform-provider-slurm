@@ -200,7 +200,7 @@ resource "slurm_user" "bob" {
     fairshare   = 10
     default_qos = slurm_qos.standard.name
     max_jobs    = 20
-    qos         = [slurm_qos.basic.name, slurm_qos.standard.name]
+    allowed_qos = [slurm_qos.basic.name, slurm_qos.standard.name]
   }
 }
 
@@ -214,7 +214,7 @@ resource "slurm_user" "carol" {
     account     = slurm_account.physics.name
     fairshare   = 20
     default_qos = slurm_qos.standard.name
-    qos         = [slurm_qos.basic.name, slurm_qos.standard.name, slurm_qos.priority.name]
+    allowed_qos = [slurm_qos.basic.name, slurm_qos.standard.name, slurm_qos.priority.name]
   }
 
   association {
@@ -224,9 +224,9 @@ resource "slurm_user" "carol" {
   }
 
   association {
-    account  = slurm_account.physics_hep.name
-    max_jobs = 10
-    qos      = [slurm_qos.priority.name, slurm_qos.express.name]
+    account     = slurm_account.physics_hep.name
+    max_jobs    = 10
+    allowed_qos = [slurm_qos.priority.name, slurm_qos.express.name]
   }
 }
 

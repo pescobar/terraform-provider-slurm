@@ -132,19 +132,63 @@ creates and imports them in the correct order.
 the two cases are indistinguishable. If you need to explicitly manage
 `fairshare = 1`, add it to the generated HCL by hand.
 
+`organization` is omitted when it equals the account's own name: Slurm
+defaults `Organization` to the account name when it is not explicitly set
+(verified with `sacctmgr show account`), so the two are indistinguishable —
+same reasoning as `fairshare` above. If your account's organization
+genuinely matches its name, add it to the generated HCL by hand.
+
 ### Users
 
 For each user the script emits one `association {}` block per account
-association found in Slurm.
+association found in Slurm, covering every field the `association` block
+accepts: `partition`, `fairshare`, `priority`, `default_qos`, `allowed_qos`,
+the job-count limits (`max_jobs`, `max_jobs_accrue`, `max_submit_jobs`,
+`grp_jobs`, `grp_jobs_accrue`, `grp_submit_jobs`), the wall-clock limits
+(`max_wall_pj`, `grp_wall`), and the TRES limits (`max_tres_per_job`,
+`max_tres_per_node`, `max_tres_mins_per_job`, `grp_tres`, `grp_tres_mins`,
+`grp_tres_run_mins`) — each emitted only when Slurm returns a non-default
+value.
 
-**QOS list (`qos`):** emitted only when Slurm returns a non-empty list for
-that specific association. An empty list means the user inherits the QOS list
-from the parent association up the hierarchy, so no `qos` block is needed.
+**`allowed_qos`:** emitted only when Slurm returns a non-empty list for
+that specific association *and* it differs from the parent account's own
+QOS list. Field names in the generated HCL/YAML exactly match the
+provider's `slurm_user` `association` block attribute names — this
+includes `allowed_qos`, not the older `qos` name some pre-v0.2.1 configs
+may still use.
+
+**Inherited-value ambiguity (`default_qos`, `max_jobs`, `max_tres_per_job`,
+`max_tres_per_node`, `max_tres_mins_per_job`):** verified against a live
+cluster, Slurm's REST API resolves these five association fields to the
+account's own effective value when the user's association never set them —
+there is no separate flag distinguishing "inherited from the account" from
+"explicitly set to the same value". The script therefore omits each of
+these fields when it matches the parent account's own value, on the
+(usual, and the only sound default given the ambiguity) assumption that a
+match means inheritance, not an intentional pin. If a user's association
+genuinely must pin one of these fields to a value that happens to equal
+the account's current value, add it to the generated HCL/YAML by hand — and
+note that a later change to the account's own value will then silently
+diverge from that pin, same as any other explicit override.
+`grp_tres` / `grp_tres_mins` / `grp_tres_run_mins` do **not** inherit this
+way (also verified) and are always emitted as the association's own value.
 
 **`fairshare`:** same rule as accounts — omitted when `≤ 1`.
 
 **`admin_level`:** omitted when `None` (the default); included for `Operator`
 and `Administrator`.
+
+**`default_wc_key`:** the user's default workload characterization key. The
+script reads it from `user.default.wckey`, matching where the provider
+itself reads it — but as a **known Slurm REST API limitation** (verified
+against a live 26.05.1 cluster; not something this project can fix),
+`default.wckey` is always returned empty on every user/association/wckey
+endpoint, even immediately after `sacctmgr` confirms the value is set
+server-side. In practice this means the script currently **never emits
+`default_wc_key`**, regardless of what is configured in Slurm. If you use
+`default_wc_key`, declare it by hand in the generated config — the
+provider can still *write* it correctly (verified), it just cannot read it
+back to detect drift, the same way `tofu plan` will never flag it either.
 
 ### Import null-preservation
 

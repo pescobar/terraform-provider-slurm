@@ -34,7 +34,7 @@ locals {
         fairshare             = try(m.fairshare, null)
         priority              = try(m.priority, null)
         default_qos           = try(m.default_qos, null)
-        qos                   = try(m.qos, null)
+        allowed_qos           = try(m.allowed_qos, null)
         max_jobs              = try(m.max_jobs, null)
         max_jobs_accrue       = try(m.max_jobs_accrue, null)
         max_submit_jobs       = try(m.max_submit_jobs, null)
@@ -56,8 +56,9 @@ locals {
   # Invert: group memberships by user into the shape slurm_user needs.
   users = {
     for u in distinct([for m in local.memberships : m.user]) : u => {
-      associations = [for m in local.memberships : m if m.user == u]
-      admin_level  = try(local.overrides[u].admin_level, null)
+      associations   = [for m in local.memberships : m if m.user == u]
+      admin_level    = try(local.overrides[u].admin_level, null)
+      default_wc_key = try(local.overrides[u].default_wc_key, null)
       # Login default account: explicit override, else the user's (only) account.
       default_account = try(
         local.overrides[u].default_account,
@@ -96,6 +97,7 @@ resource "slurm_user" "this" {
   name            = each.key
   default_account = each.value.default_account
   admin_level     = each.value.admin_level
+  default_wc_key  = each.value.default_wc_key
 
   dynamic "association" {
     for_each = each.value.associations
@@ -105,7 +107,7 @@ resource "slurm_user" "this" {
       fairshare             = association.value.fairshare
       priority              = association.value.priority
       default_qos           = association.value.default_qos
-      qos                   = association.value.qos
+      allowed_qos           = association.value.allowed_qos
       max_jobs              = association.value.max_jobs
       max_jobs_accrue       = association.value.max_jobs_accrue
       max_submit_jobs       = association.value.max_submit_jobs

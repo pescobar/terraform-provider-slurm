@@ -20,7 +20,7 @@ resource "slurm_user" "alice" {
     account     = slurm_account.physics.name
     fairshare   = 50
     default_qos = slurm_qos.standard.name
-    qos         = [slurm_qos.standard.name, slurm_qos.priority.name]
+    allowed_qos = [slurm_qos.standard.name, slurm_qos.priority.name]
   }
 }
 
@@ -49,7 +49,7 @@ resource "slurm_user" "carol" {
     account     = slurm_account.gpu_users.name
     fairshare   = 10
     default_qos = slurm_qos.standard.name
-    qos         = [slurm_qos.standard.name, slurm_qos.priority.name]
+    allowed_qos = [slurm_qos.standard.name, slurm_qos.priority.name]
 
     # Per-job TRES limits
     max_tres_per_job = [
@@ -109,6 +109,7 @@ Required:
 
 Optional:
 
+- `allowed_qos` (List of String) List of QOS names granted to this specific user's association. This is the same Slurm concept as slurm_account.allowed_qos (an association's QOS list), scoped to this user+account association instead of the account's own.
 - `default_qos` (String) Default QOS for this association.
 - `fairshare` (Number) Fairshare value for this association (default: 1).
 - `grp_jobs` (Number) Maximum running jobs across all users in this association group (GrpJobs).
@@ -127,7 +128,6 @@ Optional:
 - `max_wall_pj` (Number) Maximum wall-clock time per job in minutes (MaxWallDurationPerJob).
 - `partition` (String) Optional partition to scope this association to.
 - `priority` (Number) Association-level priority (distinct from QOS priority).
-- `qos` (List of String) List of allowed QOS names for this association.
 
 <a id="nestedatt--association--grp_tres"></a>
 ### Nested Schema for `association.grp_tres`
@@ -284,10 +284,10 @@ null state after import and will never be reconciled — meaning:
 - A future out-of-band change to those fields in Slurm will not be detected
   as drift.
 
-If you are importing a user whose associations already have a `qos` list, a
-`default_qos`, or fairshare limits set in Slurm, declare those values in your
-`association` block before importing so the reconcile apply confirms rather
-than changes them:
+If you are importing a user whose associations already have an `allowed_qos`
+list, a `default_qos`, or fairshare limits set in Slurm, declare those values
+in your `association` block before importing so the reconcile apply confirms
+rather than changes them:
 
 ```hcl
 resource "slurm_user" "alice" {
@@ -298,7 +298,7 @@ resource "slurm_user" "alice" {
     account     = "physics"
     fairshare   = 50               # declare if already set in Slurm
     default_qos = "standard"       # declare if already set in Slurm
-    qos         = ["standard", "priority"]  # declare if already set in Slurm
+    allowed_qos = ["standard", "priority"]  # declare if already set in Slurm
   }
 }
 ```
