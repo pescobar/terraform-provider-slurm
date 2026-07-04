@@ -54,26 +54,48 @@ members:
     allowed_qos: [debug, standard]
 ```
 
-The account **file name** (minus `.yaml`) is the Slurm account name.
+The account **file name** (minus `.yaml`) is the Slurm account name, unless
+overridden by a `name:` key (see "Sanitized filenames" below).
 
-### Supported account-level fields
+### Supported account-level fields — complete reference
 
-`generate.tf` passes every one of these through to `slurm_account` if present
-in the account YAML; all are optional besides the members it inverts:
+`generate.tf` passes every one of these through to `slurm_account` verbatim
+if present in the account YAML; **every key below is optional** except
+`members` (which `generate.tf` always expects, even if empty: `members: []`).
+The table matches the `slurm_account` resource schema field-for-field — if a
+key isn't in this list, `slurm_account` doesn't accept it.
 
-| Key | Maps to `slurm_account` attribute |
-|-----|-----------------------------------|
-| `description`, `organization`, `parent_account` | same-named attributes |
-| `fairshare`, `default_qos`, `allowed_qos`, `max_jobs` | same-named attributes |
-| `max_tres_per_job`, `max_tres_per_node`, `max_tres_mins_per_job` | per-job TRES limits |
-| `grp_tres`, `grp_tres_mins`, `grp_tres_run_mins` | group-aggregate TRES limits |
+| YAML key | `slurm_account` attribute | Slurm name |
+|----------|---------------------------|------------|
+| `description` | `description` | Description |
+| `organization` | `organization` | Organization |
+| `parent_account` | `parent_account` | ParentName — see the **ordering caveat** in [Notes](#notes) before using this in a Terraform-managed hierarchy |
+| `fairshare` | `fairshare` | Fairshare (the account's own association) |
+| `default_qos` | `default_qos` | DefaultQOS (the account's own association) |
+| `allowed_qos` | `allowed_qos` | QOS — list of names the account (and, unless overridden, its members) may use |
+| `max_jobs` | `max_jobs` | MaxJobs — max concurrently running jobs for the account's own association |
+| `max_tres_per_job` | `max_tres_per_job` | MaxTRES — max TRES per job |
+| `max_tres_per_node` | `max_tres_per_node` | MaxTRESPerNode — max TRES per node per job |
+| `max_tres_mins_per_job` | `max_tres_mins_per_job` | MaxTRESMins — max TRES-minutes per job |
+| `grp_tres` | `grp_tres` | GrpTRES — max TRES in use at once across the whole account group |
+| `grp_tres_mins` | `grp_tres_mins` | GrpTRESMins — max TRES-minutes across the group |
+| `grp_tres_run_mins` | `grp_tres_run_mins` | GrpTRESRunMins — max TRES-minutes of currently running jobs across the group |
 
-TRES fields use the same list-of-objects shape as the `slurm_account`
-resource (`type`, optional `name` for generic resources like `gres`, `count`):
+TRES fields (any key ending in `_tres*`) use a list-of-objects shape: `type`
+(e.g. `cpu`, `mem`, `gres`), optional `name` for generic resources like
+`gres` (e.g. `gpu`), and `count`.
+
+Full worked example using every account-level key at once (not a real
+account — see `data/accounts/lab_physics.yaml`, `teaching.yaml`, and
+`lab_bio.yaml` for realistic, partial, live-tested uses of these fields):
 
 ```yaml
-description: "Physics Lab"
+description: "Reference account — every account-level field in one place"
+organization: physics
+# parent_account: some_other_account   # see the ordering caveat before using this
 fairshare: 100
+default_qos: standard
+allowed_qos: [standard, high, long, gpu]
 max_jobs: 200
 max_tres_per_job:
   - type: cpu
@@ -81,34 +103,124 @@ max_tres_per_job:
   - type: gres
     name: gpu
     count: 8
+max_tres_per_node:
+  - type: cpu
+    count: 32
+max_tres_mins_per_job:
+  - type: cpu
+    count: 10000
+grp_tres:
+  - type: cpu
+    count: 1000
 grp_tres_mins:
   - type: cpu
-    count: 500000
+    count: 200000
+grp_tres_run_mins:
+  - type: cpu
+    count: 50000
 members:
   - alice
 ```
 
-### Supported per-member override fields (object form)
+### Supported per-member override fields (object form) — complete reference
 
 The object form of a member (`- user: <name>` plus override keys) accepts
-every field `slurm_user`'s `association` block accepts — not just QOS.
-Everything from `partition` and `max_jobs` down to per-member TRES limits can
-be overridden for a single user in a single account:
+**every field** `slurm_user`'s `association` block accepts, scoped to that
+one user's membership in that one account:
+
+| YAML key | `association` attribute | Slurm name |
+|----------|--------------------------|------------|
+| `partition` | `partition` | Partition — scopes the association to one partition |
+| `fairshare` | `fairshare` | Fairshare |
+| `priority` | `priority` | Association-level priority (distinct from QOS priority) |
+| `default_qos` | `default_qos` | DefaultQOS |
+| `allowed_qos` | `allowed_qos` | QOS — this user's own list; overrides the account's `allowed_qos` for this membership |
+| `max_jobs` | `max_jobs` | MaxJobs |
+| `max_jobs_accrue` | `max_jobs_accrue` | MaxJobsAccrue |
+| `max_submit_jobs` | `max_submit_jobs` | MaxSubmitJobs |
+| `max_wall_pj` | `max_wall_pj` | MaxWallDurationPerJob (minutes) |
+| `grp_jobs` | `grp_jobs` | GrpJobs |
+| `grp_jobs_accrue` | `grp_jobs_accrue` | GrpJobsAccrue |
+| `grp_submit_jobs` | `grp_submit_jobs` | GrpSubmitJobs |
+| `grp_wall` | `grp_wall` | GrpWall (minutes) |
+| `max_tres_per_job` | `max_tres_per_job` | MaxTRES |
+| `max_tres_per_node` | `max_tres_per_node` | MaxTRESPerNode |
+| `max_tres_mins_per_job` | `max_tres_mins_per_job` | MaxTRESMins |
+| `grp_tres` | `grp_tres` | GrpTRES |
+| `grp_tres_mins` | `grp_tres_mins` | GrpTRESMins |
+| `grp_tres_run_mins` | `grp_tres_run_mins` | GrpTRESRunMins |
+
+Full worked example using every per-member key at once (not a real member —
+see `data/accounts/teaching.yaml` (`dave`), `lab_bio.yaml` (`bob`),
+`lab_physics.yaml` (`john`), and `admin.yaml` (`john`) for realistic,
+partial, live-tested uses of these fields):
 
 ```yaml
 members:
-  - alice
-  - user: bob                 # bob gets a tighter per-account TRES cap
+  - alice                       # bare form: no overrides
+  - user: bob                   # reference member — every override key at once
+    partition: cpu
+    fairshare: 15
+    priority: 20
+    default_qos: debug
+    allowed_qos: [debug, standard]
     max_jobs: 5
+    max_jobs_accrue: 3
+    max_submit_jobs: 10
+    max_wall_pj: 240
+    grp_jobs: 4
+    grp_jobs_accrue: 2
+    grp_submit_jobs: 8
+    grp_wall: 2000
     max_tres_per_job:
       - type: gres
         name: gpu
         count: 2
+    max_tres_per_node:
+      - type: cpu
+        count: 8
+    max_tres_mins_per_job:
+      - type: cpu
+        count: 1000
+    grp_tres:
+      - type: cpu
+        count: 100
+    grp_tres_mins:
+      - type: cpu
+        count: 20000
+    grp_tres_run_mins:
+      - type: cpu
+        count: 5000
 ```
 
 Any key omitted from a member override falls back to Slurm's own default for
 that association (not the account's value) — set it explicitly on the member
-if you want it to match the account.
+if you want it to match the account. See the **inherited-value ambiguity**
+note in `tools/generate_import/README.md` if you plan to re-import this
+cluster later: Slurm cannot distinguish "explicitly set to the same value as
+the account" from "inheriting from the account" for `default_qos`,
+`max_jobs`, `max_tres_per_job`, `max_tres_per_node`, and
+`max_tres_mins_per_job`.
+
+### Sanitized filenames
+
+The YAML **filename stem** doesn't have to match the real Slurm account
+name — add a `name:` key to override it. This matters for account names
+containing characters that aren't safe in filenames (`/`, spaces, etc.):
+
+```yaml
+# data/accounts/external_collab.yaml
+name: "external/collab"          # the real Slurm account name
+description: "Cross-institution collaboration account"
+fairshare: 20
+members:
+  - alice
+```
+
+The importer (`--layout big-cluster`) does this automatically — it sanitizes
+every account name into a safe filename stem and always writes the real name
+into `name:`, so a hand-edited file only needs to add `name:` when you
+create a new account whose name isn't already filename-safe.
 
 ## `data/users.yaml` — exceptions only
 
@@ -190,3 +302,49 @@ echo '{ for u, v in local.users : u => sort([for a in v.associations : a.account
   this is usually a non-issue. If you genuinely need to manage one, add it to
   `data/users.yaml` and extend `generate.tf` to create association-less
   `slurm_user` resources from those entries (not wired up by default).
+- **`parent_account` is not ordering-safe across accounts in this layout.**
+  All accounts share one `for_each`, so OpenTofu has no dependency
+  information between a child account and its parent unless the parent is
+  an already-existing, externally-managed account (a plain string, not a
+  `slurm_account` resource in this configuration). Verified against a live
+  cluster: creating a child alongside a not-yet-existing parent races, Slurm
+  silently defaults the child's parent to `root` instead of erroring, and —
+  separately — the provider's own `Read()` cannot detect this as drift
+  (Slurm returns `parent_account: null` for an account under `root`, which
+  looks identical to "no parent configured" and is never written back to
+  state). A same-for_each self-reference to fix the ordering
+  (`slurm_account.this[...]` from within `resource "slurm_account" "this"`)
+  is not possible either — OpenTofu rejects it as a dependency cycle,
+  regardless of whether the specific instances involved would actually
+  cycle at runtime. **Until this is addressed, don't set `parent_account` to
+  another account managed by this same `data/accounts/` directory.** A
+  `parent_account` pointing at an account managed *outside* this
+  configuration (created via `sacctmgr` or a separate Terraform root) is
+  unaffected, since there's no shared `for_each` to race against. Multi-level
+  hierarchies fully managed by Terraform work correctly today only in the
+  `flat` layout, which computes real per-account `depends_on` from account
+  depth.
+- **Don't set `partition` on the association for a user's own
+  `default_account`.** Verified against a live cluster: `slurm_user`'s
+  `Create()` bootstraps the user with an unscoped association for
+  `default_account` before applying the real, plan-declared associations —
+  if that same account's association also sets `partition`, Slurm ends up
+  with two associations (unscoped + partition-scoped) for the same
+  user+account, and `tofu plan` shows a perpetual diff that never resolves.
+  `partition` is safe on any *other* account a multi-account user belongs
+  to. See `data/accounts/shared.yaml` (safe: john, non-default account) vs.
+  `teaching.yaml` (dave's association intentionally omits `partition` for
+  this reason) and the matching entry in `CLAUDE.md`.
+- **TRES-list fields (`max_tres_per_job`, `grp_tres`, etc.) merge per-TRES-type
+  on read, not as a whole list.** If an account sets `max_tres_per_job` for
+  both `cpu` and `gres/gpu`, and a member's own override only sets `gpu`,
+  Slurm's association read returns *both* — the account's `cpu` entry plus
+  the member's `gpu` entry — not just the explicit override. A config that
+  only declares the `gpu` override will show perpetual drift trying to
+  remove the `cpu` entry Slurm keeps re-adding. **Restate every TRES type
+  the account sets on that field**, even the ones you're not changing — see
+  `data/accounts/lab_physics.yaml` (john restates `cpu` alongside his own
+  `gpu` override) and the matching entry in `CLAUDE.md`. This does not
+  affect the importer (`--layout big-cluster` / `--layout flat`): it always
+  captures the full, already-merged list Slurm returns, so a partial
+  override is handled correctly by construction.

@@ -3,7 +3,26 @@ organization: education
 fairshare: 50
 default_qos: short
 allowed_qos: [short, standard, interactive]
+max_jobs: 100
+max_tres_per_node:
+  - type: cpu
+    count: 8
+grp_tres:
+  - type: cpu
+    count: 200
 members:
-  - dave
+  # TA slot: tighter, TA-appropriate limits.
+  # (No `partition:` here on purpose — teaching is dave's only/default
+  # account, and scoping a user's DEFAULT-account association to a
+  # partition collides with the atomic user-create bootstrap call, which
+  # always creates an unscoped association for that account first. See the
+  # `partition` caveat in the Notes section below; `shared.yaml` (john, a
+  # multi-account user) demonstrates `partition` safely on a non-default
+  # account instead.
+  - user: dave
+    fairshare: 15
+    priority: 20
+    max_wall_pj: 240
+    grp_wall: 2000
   - carol
   - john

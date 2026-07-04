@@ -28,6 +28,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`examples/big-cluster/` README now documents every supported field**
+  with complete reference tables and full worked YAML examples for both
+  account-level fields (all 13) and per-member override fields (all 19),
+  plus a `name:` sanitized-filename example. The real `data/accounts/*.yaml`
+  fixtures were enriched to exercise every field live (previously only a
+  handful were demonstrated); verified end-to-end against a live 26.05.1
+  cluster (`tofu apply` → clean `tofu plan` → `tofu destroy`).
+- **Two previously-unknown Slurm/provider interactions discovered and
+  documented** while verifying the above (both confirmed against a live
+  cluster; not fixed in this release — see `CLAUDE.md`'s "Known
+  limitation" entries and the corresponding Notes in
+  `examples/big-cluster/README.md`):
+  - Setting `partition` on the association for a user's own
+    `default_account` creates a phantom duplicate (unscoped) association,
+    because `slurm_user.Create()`'s atomic bootstrap call always creates an
+    unscoped association for `default_account` before the real,
+    plan-declared associations are applied. Safe on any other account a
+    multi-account user belongs to.
+  - TRES-list fields (`max_tres_per_job`, etc.) merge **per TRES type** on
+    read: a member overriding only one TRES type (e.g. `gpu`) while the
+    account sets others (e.g. `cpu`) will see Slurm return both merged
+    together, so a config declaring only the intended override never
+    converges — every type the account sets must be restated. The importer
+    already handles this correctly by construction; it only affects
+    hand-written configs.
+  - Also confirmed (and reverted after testing): a `for_each`-shared
+    `slurm_account` resource cannot reference other instances of itself to
+    get automatic dependency ordering for `parent_account` — OpenTofu
+    rejects it as a cycle even when the specific instances involved
+    wouldn't actually cycle at runtime. Documented as a hard limitation
+    alongside the pre-existing `parent_account` drift-blindness note.
 - **`insecure_skip_verify` provider option** for connecting to slurmrestd
   over HTTPS with a self-signed or internally-issued certificate. TLS
   certificates are validated by default (secure by default); set
@@ -109,6 +140,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `examples/big-cluster/data/accounts/lab_chem.yaml` and `shared.yaml` set
+  `default_qos` without an `allowed_qos` list, which Slurm rejects at the
+  account level with `HTTP 422: ... would not have access to their default
+  qos` — apparently never caught before because the full example had never
+  been applied end-to-end in one go. Fixed by adding `allowed_qos` to both.
 - `slurm_qos` `usage_factor` and `usage_threshold` now use `Float64`, so
   fractional values (e.g. `0.5`) round-trip without truncation.
 - The `slurm_user` data source exposes `association` as a
