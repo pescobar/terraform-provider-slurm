@@ -28,6 +28,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **CI now exercises `examples/big-cluster/` and `generate_import.py`
+  end-to-end**, across the full Slurm version matrix. Two new acceptance
+  steps: (1) apply/plan/destroy the big-cluster example directly, and (2)
+  populate the cluster with it, then run `generate_import.py` for both
+  `--layout flat` and `--layout big-cluster` against that same live state
+  and verify each generated config's full import → reconcile → clean-plan
+  cycle. This is the CI coverage for everything verified manually while
+  building the field reference above (the `allowed_qos` rename, TRES/
+  job-count/wall-clock limits at both account and per-member scope,
+  `default_wc_key`, and the two documented workarounds).
 - **`examples/big-cluster/` README now documents every supported field**
   with complete reference tables and full worked YAML examples for both
   account-level fields (all 13) and per-member override fields (all 19),
