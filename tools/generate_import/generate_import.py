@@ -675,7 +675,7 @@ def _assoc_block(a: dict, acct: Optional[dict] = None) -> str:
 
 
 def generate_users(users: list, assocs: list) -> tuple:
-    """Returns (hcl_content, import_blocks)."""
+    """Returns (hcl_content, import_blocks, skipped)."""
     # Account-level association lookup used to filter inherited QOS lists.
     acct_assoc: dict = {
         a["account"]: a
@@ -690,12 +690,23 @@ def generate_users(users: list, assocs: list) -> tuple:
         if user and user not in SYSTEM_USERS:
             user_assocs[user].append(a)
 
-    blocks  = []
-    imports = []
+    blocks   = []
+    imports  = []
+    skipped  = []
 
     for u in sorted(users, key=lambda x: x["name"]):
         name = u["name"]
         if name in SYSTEM_USERS:
+            continue
+
+        # A slurm_user resource requires default_account and at least one
+        # association block -- both are impossible to populate for a user
+        # with no associations at all (e.g. one left over from an
+        # out-of-band failure partway through creation). Skip and warn
+        # rather than emit HCL that fails validation, matching the
+        # zero-association handling already in generate_bigcluster_users().
+        if not user_assocs[name]:
+            skipped.append(name)
             continue
 
         label = tf_label(name, "user")
@@ -732,7 +743,7 @@ def generate_users(users: list, assocs: list) -> tuple:
         blocks.append(resource_block("slurm_user", label, attrs))
         imports.append(import_block("slurm_user", label, name))
 
-    return "\n\n".join(blocks), imports
+    return "\n\n".join(blocks), imports, skipped
 
 
 # ---------------------------------------------------------------------------
@@ -1223,7 +1234,7 @@ def main() -> None:
         all_imports.extend(acc_imports)
 
         # Users
-        usr_hcl, usr_imports = generate_users(users, assocs)
+        usr_hcl, usr_imports, skipped = generate_users(users, assocs)
         all_imports.extend(usr_imports)
 
         print(f"Generating {len(all_imports)} resources into {out}/")
@@ -1237,6 +1248,15 @@ def main() -> None:
               HEADER + "\n" + usr_hcl + "\n")
         write(os.path.join(out, "imports.tf"),
               HEADER + "\n" + "\n\n".join(all_imports) + "\n")
+
+        if skipped:
+            all_warnings.append(
+                f"  {len(skipped)} user(s) have no associations and cannot be\n"
+                f"  represented as a slurm_user resource (default_account and at\n"
+                f"  least one association are both required) — skipped:\n"
+                f"    {', '.join(skipped[:20])}"
+                + (" …" if len(skipped) > 20 else "")
+            )
 
     if all_warnings:
         print()

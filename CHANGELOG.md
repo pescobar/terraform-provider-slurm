@@ -150,6 +150,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- CI: `golangci-lint-action` bumped `v7`→`v9` and `hashicorp/setup-terraform`
+  bumped `v3`→`v4`, both to pick up their Node.js 24 runtime (removes the
+  "Node.js 20 is being deprecated" warnings). Also fixed the actual lint
+  failure this surfaced: an unchecked `os.Unsetenv` in
+  `internal/provider/provider_test.go`, replaced with `t.Setenv(envVar, "")`.
+- `generate_import.py`'s `generate_users()` (`flat` layout) assumed every
+  user has at least one association and unconditionally emitted a
+  `slurm_user` block, which fails Terraform validation for a
+  zero-association user. Fixed to skip such users with a warning,
+  mirroring `generate_bigcluster_users()`'s existing behavior. Found via a
+  real CI failure: `test/fixtures/user-association-tests/negative/`
+  intentionally fails association creation after the user already exists in
+  Slurm (an untracked, orphaned resource — see the new `CLAUDE.md` entry),
+  and destroying that fixture's own (tracked) account cascade-deletes the
+  orphaned user's association too, leaving a genuine zero-association user
+  for the next CI step's `generate_import.py` run to trip over.
+- CI: the negative-test fixture now deletes its two orphaned users directly
+  via the REST API after its own `tofu destroy`, so they don't leak into
+  later steps in the same job.
 - `examples/big-cluster/data/accounts/lab_chem.yaml` and `shared.yaml` set
   `default_qos` without an `allowed_qos` list, which Slurm rejects at the
   account level with `HTTP 422: ... would not have access to their default

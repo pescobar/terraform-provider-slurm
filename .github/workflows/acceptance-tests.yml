@@ -318,6 +318,25 @@ jobs:
           TF_VAR_slurm_api_version: ${{ matrix.api_version }}
         run: |
           cd test/fixtures/user-association-tests/negative/
+
+          # The association-creation failure this test triggers happens
+          # AFTER the provider's atomic user-bootstrap call already created
+          # the user in Slurm, so neg_u_rule1/neg_u_rule2 exist server-side
+          # even though Create() returned an error and never wrote them into
+          # Terraform state. `tofu destroy` below only removes resources it
+          # has in state, so these two users would otherwise leak into every
+          # later step in this job (e.g. confusing generate_import.py, which
+          # enumerates every user on the cluster). Clean them up directly via
+          # the REST API regardless of which exit path below is taken.
+          cleanup_orphaned_users() {
+            for user in neg_u_rule1 neg_u_rule2; do
+              curl -sf -X DELETE \
+                -H "X-SLURM-USER-TOKEN: ${{ env.SLURM_JWT_TOKEN }}" \
+                "http://localhost:6820/slurmdb/${{ matrix.api_version }}/user/$user" \
+                >/dev/null 2>&1 || true
+            done
+          }
+
           set +e
           output=$(tofu apply -auto-approve 2>&1)
           exit_code=$?
@@ -326,6 +345,7 @@ jobs:
           if [ "$exit_code" -eq 0 ]; then
             echo "FAIL: expected tofu apply to fail but it succeeded"
             tofu destroy -auto-approve
+            cleanup_orphaned_users
             exit 1
           fi
           # Both bad users must have triggered an association error.
@@ -337,11 +357,13 @@ jobs:
             if ! echo "$output" | grep -qF "associations failed"; then
               echo "FAIL: expected 'associations failed' error for $user not found"
               tofu destroy -auto-approve
+              cleanup_orphaned_users
               exit 1
             fi
           done
           echo "PASS: both QOS constraint violations were correctly rejected"
           tofu destroy -auto-approve
+          cleanup_orphaned_users
 
       - name: Run schema validator tests (plan-time, no API calls)
         env:

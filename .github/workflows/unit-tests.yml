@@ -35,7 +35,7 @@ jobs:
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
           version: latest
 
@@ -52,7 +52,7 @@ jobs:
 
       # tfplugindocs shells out to `terraform` to introspect the provider
       # schema (see the Makefile docs target for details).
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
 
