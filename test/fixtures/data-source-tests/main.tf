@@ -140,3 +140,17 @@ output "user_multi_assoc_count" {
 output "user_multi_alt_fairshare" {
   value = [for a in data.slurm_user.by_name_multi.association : a.fairshare if a.account == "ds_acct_alt"][0]
 }
+
+# ---------- Partition data source (read-only cluster state) ----------
+# The "cpu" partition is defined in the test image's slurm.conf, so this
+# works on every Slurm version in the CI matrix (partition GET has existed
+# since v0.0.42). The conf data sources are v0.0.45+ and live in the
+# separate conf-datasource-tests fixture.
+
+data "slurm_partition" "cpu" {
+  name = "cpu"
+}
+
+output "partition_name" { value = data.slurm_partition.cpu.name }
+output "partition_state" { value = join(",", data.slurm_partition.cpu.state) }
+output "partition_flags" { value = join(",", data.slurm_partition.cpu.flags) }

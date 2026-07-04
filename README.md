@@ -19,9 +19,38 @@ reservations are out of scope.
 |-----------|---------|
 | OpenTofu  | ≥ 1.6   |
 | Terraform | ≥ 1.5   |
-| Slurm     | 25.05.x |
-| slurmrestd API | v0.0.42 |
+| Slurm     | see table below |
 | Go (for development) | ≥ 1.22 |
+
+### Supported Slurm versions
+
+Every Slurm release below is exercised by the acceptance-test matrix on every
+commit. Set the provider's `api_version` to the value matching your cluster:
+
+| Slurm release | `api_version` |
+|---------------|---------------|
+| 25.05.x       | `v0.0.42`     |
+| 25.11.x       | `v0.0.44`     |
+| 26.05.x       | `v0.0.45`     |
+
+All resources and the entity data sources (`slurm_account`, `slurm_user`,
+`slurm_qos`, `slurm_partition`) work with every supported release. Features
+that need a newer Slurm release:
+
+| Feature | Minimum Slurm | Minimum `api_version` |
+|---------|---------------|-----------------------|
+| `data.slurm_conf` (active slurmctld config) | 26.05 | `v0.0.45` |
+| `data.slurm_dbd_conf` (active slurmdbd config) | 26.05 | `v0.0.45` |
+
+Using one of these with an older `api_version` fails at plan time with an
+error naming the required Slurm release and how to fix the configuration.
+
+> **Why is there no `slurm_partition` resource?** Slurm 26.05 added REST
+> endpoints to create/update/delete partitions, but partitions created via
+> the REST API are not persisted to `slurm.conf` and disappear when slurmctld
+> restarts — a Terraform-managed partition would drift on every controller
+> restart. Partitions are therefore exposed read-only (as a data source)
+> until Slurm persists them.
 
 ## Authentication
 

@@ -179,6 +179,9 @@ func (p *slurmProvider) DataSources(_ context.Context) []func() datasource.DataS
 		resources.NewQOSDataSource,
 		resources.NewAccountDataSource,
 		resources.NewUserDataSource,
+		resources.NewPartitionDataSource,
+		resources.NewConfDataSource,
+		resources.NewDBDConfDataSource,
 	}
 }
 
