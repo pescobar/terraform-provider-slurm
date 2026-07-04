@@ -25,6 +25,15 @@ members:
     max_tres_per_node:
       - type: cpu
         count: 4
+    # max_tres_mins_per_job / grp_tres_mins / grp_tres_run_mins below only
+    # restate "cpu" because that's the only type the account itself sets on
+    # these same fields (above). Slurm merges TRES-list fields PER TYPE on
+    # read, not as a whole list — if the account ever gains another type
+    # here (e.g. gres/gpu) and bob's override doesn't restate it too, the
+    # read-back becomes a merged {cpu: bob's, gpu: inherited} set that never
+    # matches this config. See "TRES-list fields ... merge per-TRES-type on
+    # read" under Notes in README.md, and lab_physics.yaml for a worked
+    # example of restating a second type.
     max_tres_mins_per_job:
       - type: cpu
         count: 500

@@ -20,6 +20,8 @@ members:
       # read-back is the merged {cpu: inherited, gpu: overridden} set,
       # which never matches a config declaring gpu alone and shows
       # perpetual drift in `tofu plan` (verified against a live cluster).
+      # See "TRES-list fields ... merge per-TRES-type on read" under Notes
+      # in README.md for the general rule.
       - type: cpu
         count: 64
       - type: gres

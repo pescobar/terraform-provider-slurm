@@ -202,6 +202,14 @@ the account" from "inheriting from the account" for `default_qos`,
 `max_jobs`, `max_tres_per_job`, `max_tres_per_node`, and
 `max_tres_mins_per_job`.
 
+The reference member above only sets one `max_tres_per_job` type (`gpu`)
+because this illustrative account doesn't set that field at all — nothing to
+merge with. A **real** account that also sets `max_tres_per_job` needs every
+type it sets restated on the member override too, or the two won't converge
+— see **"TRES-list fields ... merge per-TRES-type on read"** under
+[Notes](#notes) below, and `data/accounts/lab_physics.yaml` /
+`lab_bio.yaml` for live-tested examples of restating a shared type.
+
 ### Sanitized filenames
 
 The YAML **filename stem** doesn't have to match the real Slurm account
