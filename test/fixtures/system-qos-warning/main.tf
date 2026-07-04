@@ -7,7 +7,7 @@
 // second apply.
 //
 // Run:
-//   cd examples/system-qos-warning
+//   cd test/fixtures/system-qos-warning
 //   tofu plan -var "slurm_token=$SLURM_JWT_TOKEN"
 //
 // Expected: tofu plan exits 0 (warnings do not fail plan) and prints a

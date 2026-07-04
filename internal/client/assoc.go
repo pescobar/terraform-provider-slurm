@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -123,7 +124,7 @@ type AssociationMaxPerAccount struct {
 }
 
 // GetAssociations returns all associations, optionally filtered by query params.
-func (c *Client) GetAssociations(params map[string]string) (*AssociationResponse, error) {
+func (c *Client) GetAssociations(ctx context.Context, params map[string]string) (*AssociationResponse, error) {
 	path := c.slurmdbPath("associations/")
 	if len(params) > 0 {
 		q := url.Values{}
@@ -132,7 +133,7 @@ func (c *Client) GetAssociations(params map[string]string) (*AssociationResponse
 		}
 		path = fmt.Sprintf("%s?%s", path, q.Encode())
 	}
-	data, err := c.doRequest(http.MethodGet, path, nil)
+	data, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -143,51 +144,17 @@ func (c *Client) GetAssociations(params map[string]string) (*AssociationResponse
 	return &resp, nil
 }
 
-// GetAssociation returns a single association by its key fields.
-func (c *Client) GetAssociation(account, user, cluster, partition string) (*Association, error) {
-	params := map[string]string{
-		"account": account,
-		"cluster": cluster,
-	}
-	if user != "" {
-		params["user"] = user
-	}
-	if partition != "" {
-		params["partition"] = partition
-	}
-
-	path := c.slurmdbPath("association/")
-	q := url.Values{}
-	for k, v := range params {
-		q.Set(k, v)
-	}
-	path = fmt.Sprintf("%s?%s", path, q.Encode())
-
-	data, err := c.doRequest(http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-	var resp AssociationResponse
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal association response: %w", err)
-	}
-	if len(resp.Associations) == 0 {
-		return nil, nil // not found
-	}
-	return &resp.Associations[0], nil
-}
-
 // CreateAssociations creates or updates associations.
-func (c *Client) CreateAssociations(associations []Association) error {
+func (c *Client) CreateAssociations(ctx context.Context, associations []Association) error {
 	body := map[string][]Association{
 		"associations": associations,
 	}
-	_, err := c.doRequest(http.MethodPost, c.slurmdbPath("associations/"), body)
+	_, err := c.doRequest(ctx, http.MethodPost, c.slurmdbPath("associations/"), body)
 	return err
 }
 
 // DeleteAssociation deletes a single association by its key fields.
-func (c *Client) DeleteAssociation(account, user, cluster, partition string) error {
+func (c *Client) DeleteAssociation(ctx context.Context, account, user, cluster, partition string) error {
 	c.deleteMu.Lock()
 	defer c.deleteMu.Unlock()
 	params := map[string]string{
@@ -208,6 +175,6 @@ func (c *Client) DeleteAssociation(account, user, cluster, partition string) err
 	}
 	path = fmt.Sprintf("%s?%s", path, q.Encode())
 
-	_, err := c.doRequest(http.MethodDelete, path, nil)
+	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	return err
 }

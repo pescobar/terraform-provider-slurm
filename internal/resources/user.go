@@ -431,7 +431,7 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 		userReq.User.AdminLevel = []string{plan.AdminLevel.ValueString()}
 	}
 
-	if err := r.client.CreateUserWithAssociation(userReq); err != nil {
+	if err := r.client.CreateUserWithAssociation(ctx, userReq); err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating user",
 			fmt.Sprintf("Could not create user '%s': %s", userName, err.Error()),
@@ -457,7 +457,7 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 		needsUpdate = true
 	}
 	if needsUpdate {
-		if err := r.client.UpdateUser(updateUser); err != nil {
+		if err := r.client.UpdateUser(ctx, updateUser); err != nil {
 			resp.Diagnostics.AddError(
 				"Error setting user attributes after creation",
 				fmt.Sprintf("User '%s' was created but attributes could not be set: %s", userName, err.Error()),
@@ -468,7 +468,7 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	// Step 2: Set limits on all associations via the associations endpoint (upsert).
 	// This covers both the initial association created above and any additional ones.
-	if err := r.client.CreateAssociations(assocs); err != nil {
+	if err := r.client.CreateAssociations(ctx, assocs); err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating associations",
 			assocErrorDetail(fmt.Sprintf("User '%s' was created but associations failed", userName), err),
@@ -500,7 +500,7 @@ func (r *userResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	userName := state.Name.ValueString()
 
 	// Read user metadata
-	user, err := r.client.GetUser(userName)
+	user, err := r.client.GetUser(ctx, userName)
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading user", err.Error())
 		return
@@ -527,7 +527,7 @@ func (r *userResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	}
 
 	// Read associations for this user
-	assocResp, err := r.client.GetAssociations(map[string]string{
+	assocResp, err := r.client.GetAssociations(ctx, map[string]string{
 		"user":    userName,
 		"cluster": r.client.Cluster,
 	})
@@ -640,7 +640,7 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	// Must happen before updating default_account, in case the new default
 	// points to a newly created association.
 	if len(diff.Create) > 0 {
-		if err := r.client.CreateAssociations(diff.Create); err != nil {
+		if err := r.client.CreateAssociations(ctx, diff.Create); err != nil {
 			resp.Diagnostics.AddError(
 				"Error creating new associations",
 				assocErrorDetail(fmt.Sprintf("Failed to create associations for user '%s'", userName), err),
@@ -668,7 +668,7 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		if !plan.DefaultWCKey.IsNull() && !plan.DefaultWCKey.IsUnknown() {
 			user.Default.WCKey = plan.DefaultWCKey.ValueString()
 		}
-		if err := r.client.UpdateUser(user); err != nil {
+		if err := r.client.UpdateUser(ctx, user); err != nil {
 			resp.Diagnostics.AddError(
 				"Error updating user",
 				fmt.Sprintf("Failed to update user '%s': %s", userName, err.Error()),
@@ -680,7 +680,7 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 
 	// --- Step 3: Update existing associations ---
 	if len(diff.Update) > 0 {
-		if err := r.client.CreateAssociations(diff.Update); err != nil {
+		if err := r.client.CreateAssociations(ctx, diff.Update); err != nil {
 			resp.Diagnostics.AddError(
 				"Error updating associations",
 				assocErrorDetail(fmt.Sprintf("Failed to update associations for user '%s'", userName), err),
@@ -696,7 +696,7 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	// Must happen after updating default_account, in case the old default
 	// account's association is being removed.
 	for _, key := range diff.Delete {
-		if err := r.client.DeleteAssociation(key.Account, userName, r.client.Cluster, key.Partition); err != nil {
+		if err := r.client.DeleteAssociation(ctx, key.Account, userName, r.client.Cluster, key.Partition); err != nil {
 			resp.Diagnostics.AddError(
 				"Error deleting association",
 				fmt.Sprintf("Failed to delete association '%s' for user '%s': %s",
@@ -730,7 +730,7 @@ func (r *userResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		"name": userName,
 	})
 
-	if err := r.client.DeleteUser(userName); err != nil {
+	if err := r.client.DeleteUser(ctx, userName); err != nil {
 		resp.Diagnostics.AddError("Error deleting user", err.Error())
 		return
 	}

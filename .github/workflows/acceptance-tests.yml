@@ -184,7 +184,7 @@ jobs:
           TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
           TF_VAR_slurm_api_version: ${{ matrix.api_version }}
         run: |
-          cd examples/advanced-acceptance-tests/
+          cd test/fixtures/advanced-acceptance-tests/
 
           # --- Cycle 1: create, verify idempotency, destroy ---
           tofu apply -auto-approve
@@ -235,7 +235,7 @@ jobs:
           TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
           TF_VAR_slurm_api_version: ${{ matrix.api_version }}
         run: |
-          cd examples/user-association-tests/
+          cd test/fixtures/user-association-tests/
 
           # --- Cycle 1: create, verify idempotency, destroy ---
           tofu apply -auto-approve
@@ -314,7 +314,7 @@ jobs:
           TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
           TF_VAR_slurm_api_version: ${{ matrix.api_version }}
         run: |
-          cd examples/user-association-tests/negative/
+          cd test/fixtures/user-association-tests/negative/
           set +e
           output=$(tofu apply -auto-approve 2>&1)
           exit_code=$?
@@ -346,7 +346,7 @@ jobs:
           TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
           TF_VAR_slurm_api_version: ${{ matrix.api_version }}
         run: |
-          cd examples/validator-tests/
+          cd test/fixtures/validator-tests/
           # Every resource block in this fixture deliberately violates one
           # plan-time validator. `tofu plan` must exit non-zero and emit one
           # diagnostic per violation. No API calls happen, so there is nothing
@@ -390,7 +390,7 @@ jobs:
           TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
           TF_VAR_slurm_api_version: ${{ matrix.api_version }}
         run: |
-          cd examples/data-source-tests/
+          cd test/fixtures/data-source-tests/
           # Apply the resources + data sources, then assert each data
           # source returns the values its matching resource set.
           tofu apply -auto-approve
@@ -432,7 +432,7 @@ jobs:
           TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
           TF_VAR_slurm_api_version: ${{ matrix.api_version }}
         run: |
-          cd examples/data-source-tests/notfound/
+          cd test/fixtures/data-source-tests/notfound/
           set +e
           output=$(tofu plan 2>&1)
           exit_code=$?
@@ -456,7 +456,7 @@ jobs:
           TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
           TF_VAR_slurm_api_version: ${{ matrix.api_version }}
         run: |
-          cd examples/system-qos-warning/
+          cd test/fixtures/system-qos-warning/
           # Plan only — applying would mutate the live "normal" system QOS,
           # which is the footgun this warning is meant to prevent.
           set +e
@@ -484,7 +484,7 @@ jobs:
           TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
           TF_VAR_slurm_api_version: ${{ matrix.api_version }}
         run: |
-          cd examples/qos-acceptance-tests/
+          cd test/fixtures/qos-acceptance-tests/
 
           # --- Cycle 1: create, verify idempotency, destroy ---
           tofu apply -auto-approve
@@ -537,7 +537,7 @@ jobs:
           TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
           TF_VAR_slurm_api_version: ${{ matrix.api_version }}
         run: |
-          cd examples/assoc-limits-tests/
+          cd test/fixtures/assoc-limits-tests/
 
           # --- Cycle 1: create, verify idempotency, destroy ---
           tofu apply -auto-approve

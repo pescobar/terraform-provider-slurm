@@ -15,6 +15,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sync"
@@ -35,6 +36,11 @@ type Client struct {
 	// APIVersion is the data_parser version (e.g. "v0.0.42")
 	APIVersion string
 
+	// UserAgent is sent as the User-Agent header on every request so
+	// slurmrestd logs can attribute traffic to this provider. NewClient sets
+	// a default; the provider overrides it with the release version.
+	UserAgent string
+
 	// HTTPClient is the underlying HTTP client
 	HTTPClient *http.Client
 
@@ -49,8 +55,9 @@ type Client struct {
 	// retry loop run instantly.
 	RetryBackoff func(attempt int) time.Duration
 
-	// sleep is indirected for tests.
-	sleep func(time.Duration)
+	// sleep is indirected for tests. It must return early with ctx.Err()
+	// when the context is cancelled mid-backoff.
+	sleep func(ctx context.Context, d time.Duration) error
 
 	// deleteMu serializes all delete operations. slurmdbd uses optimistic locking
 	// and returns MySQL error 1020 when concurrent deletes race on cross-row
@@ -65,12 +72,30 @@ func NewClient(baseURL, token, cluster, apiVersion string) *Client {
 		Token:      token,
 		Cluster:    cluster,
 		APIVersion: apiVersion,
+		UserAgent:  "terraform-provider-slurm",
 		HTTPClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 		MaxRetries:   2, // 3 attempts total
 		RetryBackoff: defaultRetryBackoff,
-		sleep:        time.Sleep,
+		sleep:        sleepCtx,
+	}
+}
+
+// sleepCtx sleeps for d but returns early with the context's error when ctx
+// is cancelled first. This keeps retry backoff responsive to Terraform's
+// cancellation (Ctrl-C, timeouts).
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
 	}
 }
 
@@ -152,7 +177,7 @@ type TRES struct {
 }
 
 // Ping checks connectivity to slurmrestd.
-func (c *Client) Ping() error {
-	_, err := c.doRequest(http.MethodGet, c.slurmdbPath("diag/"), nil)
+func (c *Client) Ping(ctx context.Context) error {
+	_, err := c.doRequest(ctx, http.MethodGet, c.slurmdbPath("diag/"), nil)
 	return err
 }

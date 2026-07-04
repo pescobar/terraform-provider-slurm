@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -23,9 +24,9 @@ type Cluster struct {
 }
 
 // GetCluster returns a single cluster by name.
-func (c *Client) GetCluster(name string) (*Cluster, error) {
+func (c *Client) GetCluster(ctx context.Context, name string) (*Cluster, error) {
 	path := c.slurmdbPath(fmt.Sprintf("cluster/%s", url.PathEscape(name)))
-	data, err := c.doRequest(http.MethodGet, path, nil)
+	data, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -40,25 +41,24 @@ func (c *Client) GetCluster(name string) (*Cluster, error) {
 }
 
 // CreateCluster creates or updates a cluster.
-func (c *Client) CreateCluster(cluster Cluster) error {
+func (c *Client) CreateCluster(ctx context.Context, cluster Cluster) error {
 	body := map[string][]Cluster{
 		"clusters": {cluster},
 	}
-	_, err := c.doRequest(http.MethodPost, c.slurmdbPath("clusters/"), body)
+	_, err := c.doRequest(ctx, http.MethodPost, c.slurmdbPath("clusters/"), body)
 	return err
 }
 
 // EnsureCluster registers the cluster in slurmdbd only if it does not already
 // exist. We intentionally do NOT update an existing cluster to avoid overwriting
 // its TRES configuration (set by slurmctld at startup) with an empty object.
-func (c *Client) EnsureCluster() error {
-	existing, err := c.GetCluster(c.Cluster)
+func (c *Client) EnsureCluster(ctx context.Context) error {
+	existing, err := c.GetCluster(ctx, c.Cluster)
 	if err != nil {
 		return err
 	}
 	if existing != nil {
 		return nil
 	}
-	return c.CreateCluster(Cluster{Name: c.Cluster})
+	return c.CreateCluster(ctx, Cluster{Name: c.Cluster})
 }
-

@@ -483,20 +483,6 @@ def _account_attrs(acc: dict, assoc: Optional[dict], label_map: dict,
     return attrs
 
 
-def _account_depth(acc: dict, acc_by_name: dict) -> int:
-    """Return the depth of an account in the hierarchy (root children = 0)."""
-    depth, parent = 0, acc.get("parent_account") or ""
-    visited: set = set()
-    while parent and parent not in SYSTEM_ACCOUNTS and parent not in visited:
-        visited.add(parent)
-        parent_acc = acc_by_name.get(parent)
-        if not parent_acc:
-            break
-        parent = parent_acc.get("parent_account") or ""
-        depth += 1
-    return depth
-
-
 def generate_accounts(accounts: list, assocs: list) -> tuple:
     """Returns (hcl_content, import_blocks)."""
     # Account-level association lookup: account_name → assoc dict (user == "")

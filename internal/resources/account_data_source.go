@@ -55,18 +55,9 @@ func (d *accountDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 }
 
 func (d *accountDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
+	if c := configureDataSourceClient(req, resp); c != nil {
+		d.client = c
 	}
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T.", req.ProviderData),
-		)
-		return
-	}
-	d.client = c
 }
 
 func (d *accountDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -77,7 +68,7 @@ func (d *accountDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	}
 	name := cfg.Name.ValueString()
 
-	account, err := d.client.GetAccount(name)
+	account, err := d.client.GetAccount(ctx, name)
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading account", err.Error())
 		return
@@ -122,7 +113,7 @@ func accountAPIToState(ctx context.Context, c *client.Client, account *client.Ac
 		GrpTRESRunMins:    types.SetNull(tresElemType()),
 	}
 
-	assocResp, err := c.GetAssociations(map[string]string{
+	assocResp, err := c.GetAssociations(ctx, map[string]string{
 		"account": account.Name,
 		"cluster": c.Cluster,
 	})

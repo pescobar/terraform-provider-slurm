@@ -153,7 +153,7 @@ func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest
 		},
 		Account: acctShort,
 	}
-	if err := r.client.CreateAccountWithAssociation(acctAssocReq); err != nil {
+	if err := r.client.CreateAccountWithAssociation(ctx, acctAssocReq); err != nil {
 		resp.Diagnostics.AddError("Error creating account", err.Error())
 		return
 	}
@@ -166,7 +166,7 @@ func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 	if hasLimits {
-		if err := r.client.CreateAssociations([]client.Association{assoc}); err != nil {
+		if err := r.client.CreateAssociations(ctx, []client.Association{assoc}); err != nil {
 			resp.Diagnostics.AddError("Error setting account association limits", err.Error())
 			return
 		}
@@ -187,7 +187,7 @@ func (r *accountResource) Read(ctx context.Context, req resource.ReadRequest, re
 	}
 
 	// Read account metadata
-	account, err := r.client.GetAccount(state.Name.ValueString())
+	account, err := r.client.GetAccount(ctx, state.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading account", err.Error())
 		return
@@ -212,7 +212,7 @@ func (r *accountResource) Read(ctx context.Context, req resource.ReadRequest, re
 	// Read account-level association.
 	// The singular /association/ endpoint does not return account-level entries
 	// (user=""); use the plural /associations/ endpoint and filter instead.
-	assocResp, err := r.client.GetAssociations(map[string]string{
+	assocResp, err := r.client.GetAssociations(ctx, map[string]string{
 		"account": account.Name,
 		"cluster": r.client.Cluster,
 	})
@@ -302,7 +302,7 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 		account.ParentAccount = plan.Parent.ValueString()
 	}
 
-	if err := r.client.CreateAccount(account); err != nil {
+	if err := r.client.CreateAccount(ctx, account); err != nil {
 		resp.Diagnostics.AddError("Error updating account", err.Error())
 		return
 	}
@@ -315,7 +315,7 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 	if hasLimits {
-		if err := r.client.CreateAssociations([]client.Association{assoc}); err != nil {
+		if err := r.client.CreateAssociations(ctx, []client.Association{assoc}); err != nil {
 			resp.Diagnostics.AddError("Error updating account association", err.Error())
 			return
 		}
@@ -339,7 +339,7 @@ func (r *accountResource) Delete(ctx context.Context, req resource.DeleteRequest
 		"name": state.Name.ValueString(),
 	})
 
-	if err := r.client.DeleteAccount(state.Name.ValueString()); err != nil {
+	if err := r.client.DeleteAccount(ctx, state.Name.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Error deleting account", err.Error())
 		return
 	}

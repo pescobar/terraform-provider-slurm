@@ -168,10 +168,10 @@ resource "slurm_qos" "scavenger" {
 - `min_tres_per_job` (Attributes Set) Minimum TRES a job must request to use this QOS (MinTRES). (see [below for nested schema](#nestedatt--min_tres_per_job))
 - `preempt_exempt_time` (Number) Minimum number of seconds a job must run before it can be preempted (PreemptExemptTime).
 - `preempt_list` (Set of String) Set of QOS names that this QOS can preempt (Preempt).
-- `preempt_mode` (Set of String) Preemption mode (e.g. CANCEL, REQUEUE) (PreemptMode).
+- `preempt_mode` (Set of String) Preemption mode. Valid values: OFF, CANCEL, GANG, REQUEUE, SUSPEND, WITHIN (PreemptMode).
 - `priority` (Number) Priority value for this QOS (Priority).
-- `usage_factor` (Number) Factor applied to a job's usage when it runs under this QOS (UsageFactor). Slurm default is 1. Optional+Computed: omitting it from config keeps the current Slurm value.
-- `usage_threshold` (Number) Minimum usage factor a user must maintain to submit jobs under this QOS (UsageThres). Optional+Computed: omitting it keeps the current Slurm value.
+- `usage_factor` (Number) Factor applied to a job's usage when it runs under this QOS (UsageFactor). Slurm default is 1. Fractional values (e.g. 0.5) are allowed. Optional+Computed: omitting it from config keeps the current Slurm value.
+- `usage_threshold` (Number) Minimum usage factor a user must maintain to submit jobs under this QOS (UsageThres). Fractional values are allowed. Optional+Computed: omitting it keeps the current Slurm value.
 
 ### Read-Only
 

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -133,23 +134,10 @@ type QOSPreempt struct {
 	ExemptTime *SlurmInt `json:"exempt_time,omitempty"`
 }
 
-// GetAllQOS returns all QOS entries.
-func (c *Client) GetAllQOS() (*QOSResponse, error) {
-	data, err := c.doRequest(http.MethodGet, c.slurmdbPath("qos/"), nil)
-	if err != nil {
-		return nil, err
-	}
-	var resp QOSResponse
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal QOS response: %w", err)
-	}
-	return &resp, nil
-}
-
 // GetQOS returns a single QOS by name.
-func (c *Client) GetQOS(name string) (*QOS, error) {
+func (c *Client) GetQOS(ctx context.Context, name string) (*QOS, error) {
 	path := c.slurmdbPath(fmt.Sprintf("qos/%s", url.PathEscape(name)))
-	data, err := c.doRequest(http.MethodGet, path, nil)
+	data, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -164,19 +152,19 @@ func (c *Client) GetQOS(name string) (*QOS, error) {
 }
 
 // CreateQOS creates or updates a QOS entry.
-func (c *Client) CreateQOS(qos QOS) error {
+func (c *Client) CreateQOS(ctx context.Context, qos QOS) error {
 	body := map[string][]QOS{
 		"qos": {qos},
 	}
-	_, err := c.doRequest(http.MethodPost, c.slurmdbPath("qos/"), body)
+	_, err := c.doRequest(ctx, http.MethodPost, c.slurmdbPath("qos/"), body)
 	return err
 }
 
 // DeleteQOS deletes a QOS by name.
-func (c *Client) DeleteQOS(name string) error {
+func (c *Client) DeleteQOS(ctx context.Context, name string) error {
 	c.deleteMu.Lock()
 	defer c.deleteMu.Unlock()
 	path := c.slurmdbPath(fmt.Sprintf("qos/%s", url.PathEscape(name)))
-	_, err := c.doRequest(http.MethodDelete, path, nil)
+	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	return err
 }

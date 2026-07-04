@@ -9,7 +9,7 @@ made and no Slurm state is mutated — there is nothing to apply or destroy.
 ## Run
 
 ```bash
-cd examples/validator-tests
+cd test/fixtures/validator-tests
 TOKEN=$(docker exec slurmctld scontrol token lifespan=600 | sed 's/SLURM_JWT=//')
 tofu plan -var "slurm_token=$TOKEN"
 ```
