@@ -51,10 +51,64 @@ members:
   - alice                 # simple: bare username
   - user: john            # object form, only when this membership needs overrides
     default_qos: debug
-    qos: [debug, standard]
+    allowed_qos: [debug, standard]
 ```
 
 The account **file name** (minus `.yaml`) is the Slurm account name.
+
+### Supported account-level fields
+
+`generate.tf` passes every one of these through to `slurm_account` if present
+in the account YAML; all are optional besides the members it inverts:
+
+| Key | Maps to `slurm_account` attribute |
+|-----|-----------------------------------|
+| `description`, `organization`, `parent_account` | same-named attributes |
+| `fairshare`, `default_qos`, `allowed_qos`, `max_jobs` | same-named attributes |
+| `max_tres_per_job`, `max_tres_per_node`, `max_tres_mins_per_job` | per-job TRES limits |
+| `grp_tres`, `grp_tres_mins`, `grp_tres_run_mins` | group-aggregate TRES limits |
+
+TRES fields use the same list-of-objects shape as the `slurm_account`
+resource (`type`, optional `name` for generic resources like `gres`, `count`):
+
+```yaml
+description: "Physics Lab"
+fairshare: 100
+max_jobs: 200
+max_tres_per_job:
+  - type: cpu
+    count: 64
+  - type: gres
+    name: gpu
+    count: 8
+grp_tres_mins:
+  - type: cpu
+    count: 500000
+members:
+  - alice
+```
+
+### Supported per-member override fields (object form)
+
+The object form of a member (`- user: <name>` plus override keys) accepts
+every field `slurm_user`'s `association` block accepts — not just QOS.
+Everything from `partition` and `max_jobs` down to per-member TRES limits can
+be overridden for a single user in a single account:
+
+```yaml
+members:
+  - alice
+  - user: bob                 # bob gets a tighter per-account TRES cap
+    max_jobs: 5
+    max_tres_per_job:
+      - type: gres
+        name: gpu
+        count: 2
+```
+
+Any key omitted from a member override falls back to Slurm's own default for
+that association (not the account's value) — set it explicitly on the member
+if you want it to match the account.
 
 ## `data/users.yaml` — exceptions only
 
@@ -93,6 +147,8 @@ QOS there.
 | New single-account user | Add them to the one account file — nothing else |
 | Make a user multi-account | Add them to extra account files + one line in `users.yaml` for their default |
 | Give a user a per-account QOS | Use the object form in that account file |
+| Give a user a per-account TRES/job limit | Use the object form; see "Supported per-member override fields" above |
+| Set an account-wide TRES/job limit | Add the field to that account's YAML; see "Supported account-level fields" above |
 | Grant admin rights | Add `admin_level` to their `users.yaml` entry |
 
 ## Verifying without applying

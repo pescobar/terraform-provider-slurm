@@ -6,7 +6,7 @@ resource "slurm_user" "alice" {
     account     = slurm_account.physics.name
     fairshare   = 50
     default_qos = slurm_qos.standard.name
-    qos         = [slurm_qos.standard.name, slurm_qos.priority.name]
+    allowed_qos = [slurm_qos.standard.name, slurm_qos.priority.name]
   }
 }
 
@@ -35,7 +35,7 @@ resource "slurm_user" "carol" {
     account     = slurm_account.gpu_users.name
     fairshare   = 10
     default_qos = slurm_qos.standard.name
-    qos         = [slurm_qos.standard.name, slurm_qos.priority.name]
+    allowed_qos = [slurm_qos.standard.name, slurm_qos.priority.name]
 
     # Per-job TRES limits
     max_tres_per_job = [

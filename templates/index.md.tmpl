@@ -45,3 +45,24 @@ release and API version. When `api_version` is new enough but the cluster
 itself runs an older Slurm release, the error instead points at the server
 version. Version-dependent *attributes* (like the partition `flags`) degrade
 gracefully instead: they are null on API versions that do not expose them.
+
+## Connecting over HTTPS with a self-signed certificate
+
+The provider validates slurmrestd's TLS certificate by default. If your
+slurmrestd is fronted by HTTPS with a self-signed or internally-issued
+certificate, set `insecure_skip_verify = true` (or
+`SLURM_INSECURE_SKIP_VERIFY`) to skip validation:
+
+```terraform
+provider "slurm" {
+  endpoint             = "https://slurmrestd.internal:6820"
+  token                = var.slurm_token
+  cluster              = "mycluster"
+  insecure_skip_verify = true
+}
+```
+
+~> This disables protection against man-in-the-middle attacks. Only use it
+for self-signed certificates in trusted, non-production environments — the
+provider emits a plan-time warning whenever it is enabled. It has no effect
+when `endpoint` uses `http://`.

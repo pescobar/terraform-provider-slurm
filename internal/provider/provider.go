@@ -7,7 +7,10 @@ package provider
 
 import (
 	"context"
+	"crypto/tls"
+	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -30,10 +33,11 @@ type slurmProvider struct {
 
 // slurmProviderModel maps the provider schema to a Go struct.
 type slurmProviderModel struct {
-	Endpoint   types.String `tfsdk:"endpoint"`
-	Token      types.String `tfsdk:"token"`
-	Cluster    types.String `tfsdk:"cluster"`
-	APIVersion types.String `tfsdk:"api_version"`
+	Endpoint           types.String `tfsdk:"endpoint"`
+	Token              types.String `tfsdk:"token"`
+	Cluster            types.String `tfsdk:"cluster"`
+	APIVersion         types.String `tfsdk:"api_version"`
+	InsecureSkipVerify types.Bool   `tfsdk:"insecure_skip_verify"`
 }
 
 // New returns a function that creates a new provider instance.
@@ -79,6 +83,16 @@ func (p *slurmProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp
 					"Defaults to v0.0.42 (Slurm 25.05.x).",
 				Optional: true,
 			},
+			"insecure_skip_verify": schema.BoolAttribute{
+				MarkdownDescription: "Skip TLS certificate verification when connecting to slurmrestd over " +
+					"HTTPS. Can also be set with the SLURM_INSECURE_SKIP_VERIFY environment variable " +
+					"(any value accepted by Go's strconv.ParseBool, e.g. `true`/`false`/`1`/`0`). " +
+					"**Defaults to `false`** — certificates are validated by default. Only set this to " +
+					"`true` for self-signed certificates in trusted, non-production environments; it " +
+					"disables protection against man-in-the-middle attacks. Has no effect when `endpoint` " +
+					"uses `http://`.",
+				Optional: true,
+			},
 		},
 	}
 }
@@ -100,6 +114,7 @@ func (p *slurmProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	token := resolveConfigValue(config.Token, "SLURM_JWT_TOKEN", "")
 	cluster := resolveConfigValue(config.Cluster, "SLURM_CLUSTER", "")
 	apiVersion := resolveConfigValue(config.APIVersion, "SLURM_API_VERSION", "v0.0.42")
+	insecureSkipVerify := resolveBoolConfigValue(ctx, config.InsecureSkipVerify, "SLURM_INSECURE_SKIP_VERIFY", false)
 
 	// Validate required fields
 	if endpoint == "" {
@@ -129,13 +144,29 @@ func (p *slurmProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	}
 
 	tflog.Debug(ctx, "Creating Slurm API client", map[string]interface{}{
-		"endpoint":    endpoint,
-		"cluster":     cluster,
-		"api_version": apiVersion,
+		"endpoint":             endpoint,
+		"cluster":              cluster,
+		"api_version":          apiVersion,
+		"insecure_skip_verify": insecureSkipVerify,
 	})
+
+	if insecureSkipVerify {
+		resp.Diagnostics.AddWarning(
+			"TLS certificate verification is disabled",
+			"insecure_skip_verify is true: the provider will not validate slurmrestd's TLS "+
+				"certificate. This disables protection against man-in-the-middle attacks and "+
+				"should only be used with self-signed certificates in trusted, non-production "+
+				"environments.",
+		)
+	}
 
 	// Create the API client and verify connectivity
 	c := client.NewClient(endpoint, token, cluster, apiVersion)
+	if insecureSkipVerify {
+		c.HTTPClient.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // opt-in via insecure_skip_verify
+		}
+	}
 	c.UserAgent = "terraform-provider-slurm/" + p.version
 
 	if err := c.Ping(ctx); err != nil {
@@ -201,6 +232,29 @@ func resolveConfigValue(configured types.String, envVar, defaultValue string) st
 	}
 	if v := os.Getenv(envVar); v != "" {
 		return v
+	}
+	return defaultValue
+}
+
+// resolveBoolConfigValue is the boolean counterpart to resolveConfigValue.
+// An environment variable that fails strconv.ParseBool is logged and
+// ignored (falls through to defaultValue) rather than treated as an error,
+// since Configure has no attribute path to attach a diagnostic to for a
+// value that never went through HCL.
+func resolveBoolConfigValue(ctx context.Context, configured types.Bool, envVar string, defaultValue bool) bool {
+	if !configured.IsNull() && !configured.IsUnknown() {
+		return configured.ValueBool()
+	}
+	if v := os.Getenv(envVar); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			tflog.Warn(ctx, "Ignoring unparsable boolean environment variable", map[string]interface{}{
+				"env_var": envVar,
+				"value":   v,
+			})
+			return defaultValue
+		}
+		return b
 	}
 	return defaultValue
 }

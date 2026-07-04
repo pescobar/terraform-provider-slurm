@@ -26,7 +26,7 @@ entities that `sacctmgr` handles — not ephemeral resources like jobs or reserv
 
 ### Association Model
 - Associations are **embedded in `slurm_user`** as `SetNestedBlock`, NOT separate resources.
-- Each association block has: account, partition, fairshare, default_qos, max_jobs, qos.
+- Each association block has: account, partition, fairshare, default_qos, max_jobs, allowed_qos.
 - The Update function diffs old vs new associations and makes individual API calls.
 - **Operation order for Update**: Create new associations → Update user defaults → Update changed associations → Delete removed associations.
 - This ordering prevents edge cases when changing default_account.
@@ -148,13 +148,15 @@ Consequence for import: after `tofu import`, all Optional fields start null. A
 **reconcile apply** (`tofu apply`) is required to write config-declared values to
 Slurm and populate state. After that, `tofu plan` must be clean.
 
-The `qos` field in `slurm_user` association blocks has a stricter rule: it is
-**never populated from Slurm during import** (`hasPrior && !prior.QOS.IsNull()`
-guard in `apiAssociationsToState`). Reason: if the existing qos list were loaded
-into state but config has no `qos` block, the reconcile apply would try to clear
-the list. Slurm rejects that when `default_qos` references a QOS in that list
-(`"This request would make it so some associations would not have access to their
-default qos."`).
+The `allowed_qos` field in `slurm_user` association blocks (named `qos` before
+v2.0.0 — renamed for consistency with `slurm_account.allowed_qos`, the same
+Slurm association-QOS concept at a different scope) has a stricter rule: it is
+**never populated from Slurm during import** (`hasPrior && !prior.AllowedQOS.IsNull()`
+guard in `apiAssociationsToState`). Reason: if the existing QOS list were loaded
+into state but config has no `allowed_qos` set, the reconcile apply would try to
+clear the list. Slurm rejects that when `default_qos` references a QOS in that
+list (`"This request would make it so some associations would not have access to
+their default qos."`).
 
 `slurm_qos` uses Optional+Computed fields and does NOT have this restriction —
 all QOS attributes are read from Slurm during import, and no reconcile apply is
@@ -254,8 +256,13 @@ template as the generator's output.
 
 ## Current Status
 - All four resources implemented (cluster, account, qos, user with embedded associations).
+- Data sources for every managed entity (`slurm_qos`, `slurm_account`, `slurm_user`),
+  plus read-only `slurm_partition`, and version-gated `slurm_conf`/`slurm_dbd_conf`
+  (Slurm 26.05+ / API v0.0.45+).
 - Three bugs found and fixed (see above).
 - Integration tested: apply/destroy/apply cycle works reliably with non-system QOS names.
+- `insecure_skip_verify` provider option for self-signed-certificate HTTPS endpoints
+  (secure-by-default; opt-in only, with a plan-time warning).
 - CI: unit tests, golangci-lint, docs-check, and an acceptance matrix across
   three Slurm versions (25.05 / 25.11 / 26.05) driving the configs under
   `test/fixtures/`; releases via goreleaser on tags.

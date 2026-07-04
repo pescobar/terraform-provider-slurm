@@ -50,7 +50,7 @@ type associationModel struct {
 	Priority  types.Int64 `tfsdk:"priority"`
 	// Default settings
 	DefaultQOS types.String `tfsdk:"default_qos"`
-	QOS        types.List   `tfsdk:"qos"`
+	AllowedQOS types.List   `tfsdk:"allowed_qos"`
 	// Max job-count limits
 	MaxJobs       types.Int64 `tfsdk:"max_jobs"`
 	MaxJobsAccrue types.Int64 `tfsdk:"max_jobs_accrue"`
@@ -85,7 +85,7 @@ func associationModelType() map[string]attr.Type {
 		"priority":  types.Int64Type,
 		// Default settings
 		"default_qos": types.StringType,
-		"qos":         types.ListType{ElemType: types.StringType},
+		"allowed_qos": types.ListType{ElemType: types.StringType},
 		// Max job-count limits
 		"max_jobs":        types.Int64Type,
 		"max_jobs_accrue": types.Int64Type,
@@ -111,20 +111,30 @@ func associationModelType() map[string]attr.Type {
 
 // qosAccessHint is appended to association errors caused by Slurm's QOS
 // access constraints so users understand what went wrong and how to fix it.
+//
+// Note both rules below mention "allowed_qos" — this is the same Slurm
+// association concept (the QOS list on an association) exposed at two
+// different scopes: slurm_account.allowed_qos (the account's own
+// association) and slurm_user association.allowed_qos (a specific user's
+// association within that account).
 const qosAccessHint = `
 Slurm enforces two QOS access rules on user associations:
 
-  Rule 1 — qos list overrides account default_qos:
-    If you set 'qos' on an association, any 'default_qos' that the account
-    inherits is blocked for the user unless it also appears in that list.
-    Fix: add the account's default_qos value to the association's 'qos' list.
+  Rule 1 — the association's allowed_qos overrides the account's default_qos:
+    If you set 'allowed_qos' on an association, any 'default_qos' that the
+    account inherits is blocked for the user unless it also appears in that
+    list.
+    Fix: add the account's default_qos value to the association's
+    'allowed_qos' list.
 
   Rule 2 — default_qos requires direct allowed_qos on the account:
-    If you set 'default_qos' on an association without an explicit 'qos' list,
-    the QOS must be present in the account's own 'allowed_qos'. Slurm does NOT
+    If you set 'default_qos' on an association without an explicit
+    'allowed_qos' list on that association, the QOS must be present in the
+    account's own 'allowed_qos' (slurm_account.allowed_qos). Slurm does NOT
     follow the parent account hierarchy for this check.
-    Fix: add the QOS to the account's 'allowed_qos', or add an explicit 'qos'
-    list to the association that includes the 'default_qos' value.`
+    Fix: add the QOS to the account's 'allowed_qos', or add an explicit
+    'allowed_qos' list to the association that includes the 'default_qos'
+    value.`
 
 // isQOSAccessError reports whether a Slurm API error is caused by a QOS
 // access constraint violation on an association.
@@ -222,10 +232,12 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 							MarkdownDescription: "Default QOS for this association.",
 							Optional:            true,
 						},
-						"qos": schema.ListAttribute{
-							MarkdownDescription: "List of allowed QOS names for this association.",
-							Optional:            true,
-							ElementType:         types.StringType,
+						"allowed_qos": schema.ListAttribute{
+							MarkdownDescription: "List of QOS names granted to this specific user's association. " +
+								"This is the same Slurm concept as slurm_account.allowed_qos (an association's " +
+								"QOS list), scoped to this user+account association instead of the account's own.",
+							Optional:    true,
+							ElementType: types.StringType,
 						},
 						// Max job-count limits
 						"max_jobs": schema.Int64Attribute{
@@ -784,9 +796,9 @@ func (r *userResource) extractAssociations(ctx context.Context, model userResour
 			a.Default.QOS = am.DefaultQOS.ValueString()
 		}
 
-		if !am.QOS.IsNull() && !am.QOS.IsUnknown() {
+		if !am.AllowedQOS.IsNull() && !am.AllowedQOS.IsUnknown() {
 			var qosList []string
-			diags := am.QOS.ElementsAs(ctx, &qosList, false)
+			diags := am.AllowedQOS.ElementsAs(ctx, &qosList, false)
 			diagnostics.Append(diags...)
 			a.QOS = qosList
 		}
@@ -903,7 +915,7 @@ func (r *userResource) apiAssociationsToState(ctx context.Context, assocs []clie
 			"priority":  types.Int64Null(),
 			// Default settings
 			"default_qos": types.StringNull(),
-			"qos":         types.ListNull(types.StringType),
+			"allowed_qos": types.ListNull(types.StringType),
 			// Max job-count
 			"max_jobs":        types.Int64Null(),
 			"max_jobs_accrue": types.Int64Null(),
@@ -950,13 +962,14 @@ func (r *userResource) apiAssociationsToState(ctx context.Context, assocs []clie
 			attrs["default_qos"] = types.StringValue(a.Default.QOS)
 		}
 
-		// qos list — only propagate when we have prior state. On import (hasPrior=false)
-		// we skip qos to avoid reconcile failures: Slurm rejects clearing a qos list when
-		// default_qos would become inaccessible (e.g. account has no allowed_qos of its own).
-		if len(a.QOS) > 0 && hasPrior && !prior.QOS.IsNull() {
+		// allowed_qos list — only propagate when we have prior state. On import
+		// (hasPrior=false) we skip it to avoid reconcile failures: Slurm rejects
+		// clearing this list when default_qos would become inaccessible (e.g.
+		// account has no allowed_qos of its own).
+		if len(a.QOS) > 0 && hasPrior && !prior.AllowedQOS.IsNull() {
 			qosVal, diags := types.ListValueFrom(ctx, types.StringType, a.QOS)
 			diagnostics.Append(diags...)
-			attrs["qos"] = qosVal
+			attrs["allowed_qos"] = qosVal
 		}
 
 		// max.jobs.*

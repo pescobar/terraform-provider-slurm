@@ -69,8 +69,8 @@ resource "slurm_user" "rule1_violation" {
   default_account = slurm_account.neg_dept.name
 
   association {
-    account = slurm_account.neg_dept.name
-    qos     = [slurm_qos.neg_low.name, slurm_qos.neg_high.name]
+    account     = slurm_account.neg_dept.name
+    allowed_qos = [slurm_qos.neg_low.name, slurm_qos.neg_high.name]
   }
 }
 

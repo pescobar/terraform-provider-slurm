@@ -6,10 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-07-04
+## [2.0.0] - 2026-07-04
+
+### Breaking Changes
+
+- **`slurm_user` association attribute `qos` renamed to `allowed_qos`.** It
+  was the same Slurm concept as `slurm_account.allowed_qos` (an
+  association's QOS list) but named differently depending on which resource
+  exposed it — confusing enough in practice to fix now, while the schema is
+  still young. This is a major-version bump because it changes an existing
+  attribute name.
+
+  **Migration**: rename `qos = [...]` to `allowed_qos = [...]` inside every
+  `slurm_user` `association` block (`slurm_account.allowed_qos` is
+  unaffected — it was already named `allowed_qos`). No resource replacement
+  occurs and no manual state surgery is needed: after updating your `.tf`
+  files, `tofu plan`/`apply` reconciles the association in place using the
+  normal update path (same account+partition key). The `qosAccessHint`
+  diagnostic text and all examples, fixtures, and registry docs have been
+  updated to match.
 
 ### Added
 
+- **`insecure_skip_verify` provider option** for connecting to slurmrestd
+  over HTTPS with a self-signed or internally-issued certificate. TLS
+  certificates are validated by default (secure by default); set
+  `insecure_skip_verify = true` or `SLURM_INSECURE_SKIP_VERIFY=true` to skip
+  validation. The provider emits a plan-time warning whenever it's enabled,
+  and the setting has no effect over plain `http://`. Verified against a
+  real self-signed-certificate HTTPS endpoint (both the default-secure
+  rejection and the opt-in bypass).
 - **Data sources for every managed entity**: `slurm_qos`, `slurm_account`,
   and `slurm_user` read existing Slurm entities by name without bringing
   them under provider management.
@@ -73,6 +99,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   it into the user-centric `slurm_user`/`slurm_account` resources via
   `for_each`. Includes a README with a daily-ops cheat sheet and a worked
   multi-account user example.
+- Documented account-level and per-member **TRES limits** in the
+  `examples/big-cluster/` README: `generate.tf` already wired
+  `max_tres_per_job`/`max_tres_per_node`/`max_tres_mins_per_job`/`grp_tres`/
+  `grp_tres_mins`/`grp_tres_run_mins` through for both account YAML files
+  and per-member object-form overrides, but neither was documented. Added a
+  reference table for both scopes and a worked example (verified against a
+  live plan) to `lab_physics.yaml`.
 
 ### Fixed
 

@@ -34,7 +34,7 @@ locals {
         fairshare             = try(m.fairshare, null)
         priority              = try(m.priority, null)
         default_qos           = try(m.default_qos, null)
-        qos                   = try(m.qos, null)
+        allowed_qos           = try(m.allowed_qos, null)
         max_jobs              = try(m.max_jobs, null)
         max_jobs_accrue       = try(m.max_jobs_accrue, null)
         max_submit_jobs       = try(m.max_submit_jobs, null)
@@ -105,7 +105,7 @@ resource "slurm_user" "this" {
       fairshare             = association.value.fairshare
       priority              = association.value.priority
       default_qos           = association.value.default_qos
-      qos                   = association.value.qos
+      allowed_qos           = association.value.allowed_qos
       max_jobs              = association.value.max_jobs
       max_jobs_accrue       = association.value.max_jobs_accrue
       max_submit_jobs       = association.value.max_submit_jobs

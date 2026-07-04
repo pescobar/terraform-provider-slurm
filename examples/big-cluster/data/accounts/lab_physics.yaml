@@ -3,6 +3,16 @@ organization: physics
 fairshare: 100
 default_qos: standard
 allowed_qos: [standard, high, long, gpu]
+max_tres_per_job:
+  - type: cpu
+    count: 64
+  - type: gres
+    name: gpu
+    count: 8
 members:
   - alice
-  - john
+  - user: john             # per-account TRES override, on top of the account limit
+    max_tres_per_job:
+      - type: gres
+        name: gpu
+        count: 2

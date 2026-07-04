@@ -59,6 +59,7 @@ output "alice_accounts" {
 Read-Only:
 
 - `account` (String) Slurm account name.
+- `allowed_qos` (List of String) QOS names granted to this specific association.
 - `default_qos` (String) Default QOS.
 - `fairshare` (Number) Fairshare value.
 - `grp_jobs` (Number) Group running jobs limit (GrpJobs).
@@ -77,7 +78,6 @@ Read-Only:
 - `max_wall_pj` (Number) Max wall-clock minutes per job (MaxWallDurationPerJob).
 - `partition` (String) Partition (empty for unscoped associations).
 - `priority` (Number) Association-level priority.
-- `qos` (List of String) Allowed QOS list.
 
 <a id="nestedatt--association--grp_tres"></a>
 ### Nested Schema for `association.grp_tres`
