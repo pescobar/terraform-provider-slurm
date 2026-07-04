@@ -292,7 +292,7 @@ template as the generator's output.
   (Slurm 26.05+ / API v0.0.45+).
 - Three bugs found and fixed (see above).
 - Integration tested: apply/destroy/apply cycle works reliably with non-system QOS names.
-- `insecure_skip_verify` provider option for self-signed-certificate HTTPS endpoints
+- `insecure_skip_ssl_verify` provider option for self-signed-certificate HTTPS endpoints
   (secure-by-default; opt-in only, with a plan-time warning).
 - CI: unit tests, golangci-lint, docs-check, and an acceptance matrix across
   three Slurm versions (25.05 / 25.11 / 26.05) driving the configs under

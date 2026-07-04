@@ -128,13 +128,13 @@ All arguments can also be supplied via environment variables:
 | `token`                | `SLURM_JWT_TOKEN`               | —         |
 | `cluster`              | `SLURM_CLUSTER`                 | —         |
 | `api_version`          | `SLURM_API_VERSION`             | `v0.0.42` |
-| `insecure_skip_verify` | `SLURM_INSECURE_SKIP_VERIFY`    | `false`   |
+| `insecure_skip_ssl_verify` | `SLURM_INSECURE_SKIP_SSL_VERIFY` | `false`   |
 
 ### Connecting over HTTPS with a self-signed certificate
 
 TLS certificates are validated by default. If slurmrestd is fronted by HTTPS
 with a self-signed or internally-issued certificate, set
-`insecure_skip_verify = true` (or `SLURM_INSECURE_SKIP_VERIFY=true`) to skip
+`insecure_skip_ssl_verify = true` (or `SLURM_INSECURE_SKIP_SSL_VERIFY=true`) to skip
 validation. This disables protection against man-in-the-middle attacks —
 only use it for self-signed certificates in trusted, non-production
 environments. The provider emits a plan-time warning whenever it's enabled,
