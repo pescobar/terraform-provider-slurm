@@ -14,7 +14,8 @@ source lets HCL reference partition names and properties (for example the
 guarantee that the partition exists.
 
 -> Available with every Slurm release the provider supports (25.05+, API
-version v0.0.42+).
+version v0.0.42+). The `flags` and `preempt_mode` attributes are only
+exposed by API v0.0.45+ (Slurm 26.05) and are null on older versions.
 
 ## Why is there no `slurm_partition` resource?
 

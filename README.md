@@ -41,9 +41,13 @@ that need a newer Slurm release:
 |---------|---------------|-----------------------|
 | `data.slurm_conf` (active slurmctld config) | 26.05 | `v0.0.45` |
 | `data.slurm_dbd_conf` (active slurmdbd config) | 26.05 | `v0.0.45` |
+| `data.slurm_partition` attrs `flags`, `preempt_mode` | 26.05 | `v0.0.45` |
 
-Using one of these with an older `api_version` fails at plan time with an
-error naming the required Slurm release and how to fix the configuration.
+Using one of these data sources with an older `api_version` fails at plan
+time with an error naming the required Slurm release and how to fix the
+configuration. Version-dependent attributes (like the partition `flags`)
+degrade gracefully instead: they are null on API versions that do not expose
+them.
 
 > **Why is there no `slurm_partition` resource?** Slurm 26.05 added REST
 > endpoints to create/update/delete partitions, but partitions created via

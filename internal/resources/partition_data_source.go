@@ -70,7 +70,7 @@ func (d *partitionDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 			"total_nodes": dsschema.Int64Attribute{MarkdownDescription: "Number of nodes in the partition (TotalNodes).", Computed: true},
 			"total_cpus":  dsschema.Int64Attribute{MarkdownDescription: "Number of CPUs in the partition (TotalCPUs).", Computed: true},
 			"state":       dsschema.SetAttribute{MarkdownDescription: "Partition state (e.g. UP, DOWN, DRAIN, INACTIVE).", Computed: true, ElementType: types.StringType},
-			"flags":       dsschema.SetAttribute{MarkdownDescription: "Partition flags (e.g. DEFAULT).", Computed: true, ElementType: types.StringType},
+			"flags":       dsschema.SetAttribute{MarkdownDescription: "Partition flags (e.g. DEFAULT). Only exposed by API v0.0.45+ (Slurm 26.05); always null on older versions.", Computed: true, ElementType: types.StringType},
 			"alternate":   dsschema.StringAttribute{MarkdownDescription: "Alternate partition used when this one is unavailable (Alternate).", Computed: true},
 
 			"allow_accounts": dsschema.SetAttribute{MarkdownDescription: "Accounts allowed to use the partition (AllowAccounts). Null when unrestricted.", Computed: true, ElementType: types.StringType},
@@ -86,7 +86,7 @@ func (d *partitionDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 
 			"priority_tier":       dsschema.Int64Attribute{MarkdownDescription: "Scheduling priority tier (PriorityTier).", Computed: true},
 			"priority_job_factor": dsschema.Int64Attribute{MarkdownDescription: "Job priority factor (PriorityJobFactor).", Computed: true},
-			"preempt_mode":        dsschema.SetAttribute{MarkdownDescription: "Preemption mode of the partition (PreemptMode).", Computed: true, ElementType: types.StringType},
+			"preempt_mode":        dsschema.SetAttribute{MarkdownDescription: "Preemption mode of the partition (PreemptMode). Only exposed by API v0.0.45+ (Slurm 26.05); always null on older versions.", Computed: true, ElementType: types.StringType},
 			"grace_time":          dsschema.Int64Attribute{MarkdownDescription: "Preemption grace time in seconds (GraceTime).", Computed: true},
 		},
 	}

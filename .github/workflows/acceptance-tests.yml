@@ -424,7 +424,14 @@ jobs:
           check user_multi_alt_fairshare 3
           check partition_name           cpu
           check partition_state          UP
-          check partition_flags          DEFAULT
+          # The partition "flags" field only exists in the v0.0.45+ API
+          # schema (Slurm 26.05); older versions return null and the fixture
+          # output collapses that to "".
+          if [ "${{ matrix.api_version }}" = "v0.0.45" ]; then
+            check partition_flags DEFAULT
+          else
+            check partition_flags ""
+          fi
           echo "PASS: all 15 data-source attributes round-tripped correctly"
 
           # Idempotency: a second plan after the apply must show no drift.

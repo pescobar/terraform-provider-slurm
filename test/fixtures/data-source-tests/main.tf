@@ -153,4 +153,10 @@ data "slurm_partition" "cpu" {
 
 output "partition_name" { value = data.slurm_partition.cpu.name }
 output "partition_state" { value = join(",", data.slurm_partition.cpu.state) }
-output "partition_flags" { value = join(",", data.slurm_partition.cpu.flags) }
+
+# flags only exists in the v0.0.45+ partition schema (Slurm 26.05); the data
+# source returns null on older versions, so the join must be null-tolerant.
+# The CI step asserts "DEFAULT" on v0.0.45 and "" on older matrix entries.
+output "partition_flags" {
+  value = try(join(",", data.slurm_partition.cpu.flags), "")
+}

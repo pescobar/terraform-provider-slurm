@@ -37,8 +37,11 @@ with every supported release. Features introduced by newer Slurm releases:
 |---------|-----------------------|-----------------------|
 | `data.slurm_conf` (active slurmctld configuration) | 26.05 | `v0.0.45` |
 | `data.slurm_dbd_conf` (active slurmdbd configuration) | 26.05 | `v0.0.45` |
+| `data.slurm_partition` attributes `flags` and `preempt_mode` | 26.05 | `v0.0.45` |
 
-Using one of these features with an older `api_version` fails at plan time
-with an error that names the required Slurm release and API version. When
-`api_version` is new enough but the cluster itself runs an older Slurm
-release, the error instead points at the server version.
+Using the `slurm_conf`/`slurm_dbd_conf` data sources with an older
+`api_version` fails at plan time with an error that names the required Slurm
+release and API version. When `api_version` is new enough but the cluster
+itself runs an older Slurm release, the error instead points at the server
+version. Version-dependent *attributes* (like the partition `flags`) degrade
+gracefully instead: they are null on API versions that do not expose them.

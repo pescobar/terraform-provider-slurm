@@ -14,7 +14,8 @@ source lets HCL reference partition names and properties (for example the
 guarantee that the partition exists.
 
 -> Available with every Slurm release the provider supports (25.05+, API
-version v0.0.42+).
+version v0.0.42+). The `flags` and `preempt_mode` attributes are only
+exposed by API v0.0.45+ (Slurm 26.05) and are null on older versions.
 
 ## Why is there no `slurm_partition` resource?
 
@@ -62,13 +63,13 @@ resource "slurm_user" "dave" {
 - `default_time` (Number) Default wall-clock time per job in minutes (DefaultTime). Null when not set.
 - `deny_accounts` (Set of String) Accounts denied use of the partition (DenyAccounts).
 - `deny_qos` (Set of String) QOS denied in the partition (DenyQos).
-- `flags` (Set of String) Partition flags (e.g. DEFAULT).
+- `flags` (Set of String) Partition flags (e.g. DEFAULT). Only exposed by API v0.0.45+ (Slurm 26.05); always null on older versions.
 - `grace_time` (Number) Preemption grace time in seconds (GraceTime).
 - `id` (String) The partition name (same as name).
 - `max_nodes_per_job` (Number) Maximum node count per job (MaxNodes). Null when unlimited.
 - `max_time` (Number) Maximum wall-clock time per job in minutes (MaxTime). Null when unlimited.
 - `nodes` (String) Node expression associated with the partition (Nodes).
-- `preempt_mode` (Set of String) Preemption mode of the partition (PreemptMode).
+- `preempt_mode` (Set of String) Preemption mode of the partition (PreemptMode). Only exposed by API v0.0.45+ (Slurm 26.05); always null on older versions.
 - `priority_job_factor` (Number) Job priority factor (PriorityJobFactor).
 - `priority_tier` (Number) Scheduling priority tier (PriorityTier).
 - `qos` (String) QOS whose limits apply to all jobs in the partition (QOS).
