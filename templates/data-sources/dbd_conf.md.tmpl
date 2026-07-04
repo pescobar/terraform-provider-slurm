@@ -1,0 +1,23 @@
+---
+page_title: "slurm_dbd_conf Data Source - slurm"
+subcategory: ""
+description: |-
+  Reads the active slurmdbd configuration (sacctmgr show config equivalent).
+---
+
+# slurm_dbd_conf (Data Source)
+
+Reads the active slurmdbd configuration — the live equivalent of
+`sacctmgr show config`. Useful for preflight assertions on accounting
+settings such as `TrackWCKey` or the purge windows.
+
+~> Requires Slurm **26.05 or later** with `api_version = "v0.0.45"` (or
+later). With an older `api_version` the plan fails with an error naming the
+required versions; with a new enough `api_version` but an older cluster, the
+error points at the server version instead.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/slurm_dbd_conf/data-source.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

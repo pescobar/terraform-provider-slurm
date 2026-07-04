@@ -12,6 +12,8 @@
 //   - qos.go     — /qos/ endpoints and the deeply-nested QOS limit types
 //   - user.go    — /users/ + /users_association/ endpoints
 //   - assoc.go   — /associations/ endpoints and the AssociationMax tree
+//   - partition.go — /slurm/{v}/partition(s) endpoints (read-only)
+//   - conf.go    — /slurm/{v}/conf + /slurmdb/{v}/conf views (read-only, v0.0.45+)
 package client
 
 import (
@@ -148,6 +150,12 @@ type baseResponse struct {
 // Example: slurmdbPath("accounts") => "/slurmdb/v0.0.42/accounts/"
 func (c *Client) slurmdbPath(endpoint string) string {
 	return fmt.Sprintf("/slurmdb/%s/%s", c.APIVersion, endpoint)
+}
+
+// slurmPath builds a URL path for a slurmctld endpoint.
+// Example: slurmPath("partitions/") => "/slurm/v0.0.42/partitions/"
+func (c *Client) slurmPath(endpoint string) string {
+	return fmt.Sprintf("/slurm/%s/%s", c.APIVersion, endpoint)
 }
 
 // SlurmInt represents Slurm's integer type which includes set/infinite flags.

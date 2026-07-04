@@ -1,0 +1,33 @@
+---
+page_title: "slurm_partition Data Source - slurm"
+subcategory: ""
+description: |-
+  Reads an existing Slurm partition by name from slurmctld.
+---
+
+# slurm_partition (Data Source)
+
+Reads an existing Slurm partition by name from slurmctld. Partitions are
+defined in `slurm.conf` and are not managed by this provider — this data
+source lets HCL reference partition names and properties (for example the
+`partition` field of a `slurm_user` association block) with a plan-time
+guarantee that the partition exists.
+
+-> Available with every Slurm release the provider supports (25.05+, API
+version v0.0.42+). The `flags` and `preempt_mode` attributes are only
+exposed by API v0.0.45+ (Slurm 26.05) and are null on older versions.
+
+## Why is there no `slurm_partition` resource?
+
+Slurm 26.05 added REST endpoints to create, update, and delete partitions,
+but partitions created through the REST API live only in slurmctld's runtime
+state: they are **not** written to `slurm.conf` and are silently lost when
+slurmctld restarts. A Terraform-managed partition would show up as deleted
+after every controller restart. Until Slurm persists REST-created partitions,
+this provider deliberately exposes partitions read-only.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/slurm_partition/data-source.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

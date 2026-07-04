@@ -139,10 +139,18 @@ func (p *slurmProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	c.UserAgent = "terraform-provider-slurm/" + p.version
 
 	if err := c.Ping(ctx); err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to connect to Slurm REST API",
-			"The provider failed to connect to slurmrestd at "+endpoint+": "+err.Error(),
-		)
+		detail := "The provider failed to connect to slurmrestd at " + endpoint + ": " + err.Error()
+		// The ping hits /slurmdb/{api_version}/diag/, so a 404 almost always
+		// means the server does not serve the configured API version — i.e.
+		// the cluster runs a Slurm release older than api_version implies.
+		if client.IsNotFound(err) {
+			detail += "\n\nHTTP 404 on the diagnostics endpoint usually means slurmrestd does not " +
+				"support the configured api_version (" + apiVersion + ") — the cluster is running " +
+				"an older Slurm release. Set api_version to the value matching the cluster " +
+				"(25.05.x → v0.0.42, 25.11.x → v0.0.44, 26.05.x → v0.0.45); the full table is in " +
+				"the provider documentation."
+		}
+		resp.Diagnostics.AddError("Unable to connect to Slurm REST API", detail)
 		return
 	}
 
@@ -179,6 +187,9 @@ func (p *slurmProvider) DataSources(_ context.Context) []func() datasource.DataS
 		resources.NewQOSDataSource,
 		resources.NewAccountDataSource,
 		resources.NewUserDataSource,
+		resources.NewPartitionDataSource,
+		resources.NewConfDataSource,
+		resources.NewDBDConfDataSource,
 	}
 }
 

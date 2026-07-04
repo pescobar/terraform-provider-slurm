@@ -50,6 +50,31 @@ provider "slurm" {
 - Binary must be named `terraform-provider-slurm` (required by both Terraform and OpenTofu).
 - For dev testing, use `~/.tofurc` with dev_overrides to skip registry.
 
+### Version-gated features (Slurm 26.05 / API v0.0.45)
+
+`data.slurm_conf` and `data.slurm_dbd_conf` read the active slurmctld/slurmdbd
+configuration via the `/conf` endpoints that only exist in API v0.0.45+
+(Slurm 26.05). Two guard layers (`internal/client/conf.go`):
+
+1. `requireAPIVersion` — deterministic pre-flight check against the configured
+   `api_version`; fails `tofu plan` with an actionable message (names the
+   feature, required Slurm release, configured version, and the fix) before
+   any HTTP call. Unparsable api_versions pass through — the server stays
+   authoritative.
+2. `client.IsNotFound` 404 fallback — catches "api_version is new enough but
+   the cluster runs older Slurm"; the diagnostic then points at the server.
+
+CI covers both paths: the conf fixture runs only on the v0.0.45 matrix entry,
+and a negative step asserts the version-error text on older entries. When
+adding new version-gated endpoints, follow this same two-layer pattern.
+
+**No `slurm_partition` resource, deliberately**: Slurm 26.05 added partition
+create/update/delete via REST, but REST-created partitions are not written to
+slurm.conf and vanish on slurmctld restart (verified empirically on 26.05.1) —
+they would drift on every controller restart. Partitions are exposed as the
+read-only `data.slurm_partition` (works on all supported versions, v0.0.42+).
+Revisit if SchedMD makes REST-created partitions persistent.
+
 ## Slurm REST API Endpoints Used
 
 ### Accounts

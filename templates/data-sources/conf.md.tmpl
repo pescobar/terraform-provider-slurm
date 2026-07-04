@@ -1,0 +1,25 @@
+---
+page_title: "slurm_conf Data Source - slurm"
+subcategory: ""
+description: |-
+  Reads the active slurmctld configuration (scontrol show config equivalent).
+---
+
+# slurm_conf (Data Source)
+
+Reads the active slurmctld configuration — the live equivalent of
+`scontrol show config`. Useful for preflight assertions (for example checking
+that `AccountingStorageEnforce` includes `associations`, which the accounting
+model managed by this provider assumes) or for referencing cluster facts such
+as the running Slurm version.
+
+~> Requires Slurm **26.05 or later** with `api_version = "v0.0.45"` (or
+later). With an older `api_version` the plan fails with an error naming the
+required versions; with a new enough `api_version` but an older cluster, the
+error points at the server version instead.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/slurm_conf/data-source.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

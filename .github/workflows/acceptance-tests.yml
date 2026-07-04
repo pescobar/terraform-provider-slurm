@@ -127,7 +127,10 @@ jobs:
                      examples/resources/slurm_user \
                      examples/data-sources/slurm_qos \
                      examples/data-sources/slurm_account \
-                     examples/data-sources/slurm_user; do
+                     examples/data-sources/slurm_user \
+                     examples/data-sources/slurm_partition \
+                     examples/data-sources/slurm_conf \
+                     examples/data-sources/slurm_dbd_conf; do
             label=$(echo "$dir" | tr / _)
             for f in "$dir"/*.tf; do
               cp "$f" "$tmpdir/${label}_$(basename "$f")"
@@ -419,7 +422,17 @@ jobs:
           check user_assoc_max_jobs      12
           check user_multi_assoc_count   2
           check user_multi_alt_fairshare 3
-          echo "PASS: all 12 data-source attributes round-tripped correctly"
+          check partition_name           cpu
+          check partition_state          UP
+          # The partition "flags" field only exists in the v0.0.45+ API
+          # schema (Slurm 26.05); older versions return null and the fixture
+          # output collapses that to "".
+          if [ "${{ matrix.api_version }}" = "v0.0.45" ]; then
+            check partition_flags DEFAULT
+          else
+            check partition_flags ""
+          fi
+          echo "PASS: all 15 data-source attributes round-tripped correctly"
 
           # Idempotency: a second plan after the apply must show no drift.
           tofu plan -detailed-exitcode
@@ -449,6 +462,70 @@ jobs:
             fi
           done
           echo "PASS: all three data sources rejected missing names with the expected diagnostic"
+
+      - name: Run conf data-source tests (slurm_conf + slurm_dbd_conf, v0.0.45+ only)
+        if: matrix.api_version == 'v0.0.45'
+        env:
+          TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
+          TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
+          TF_VAR_slurm_api_version: ${{ matrix.api_version }}
+        run: |
+          cd test/fixtures/conf-datasource-tests/
+          tofu apply -auto-approve
+
+          out=$(tofu output -json)
+          echo "$out"
+
+          check() {
+            local key=$1 want=$2
+            got=$(echo "$out" | python3 -c "import json,sys; print(json.load(sys.stdin)['$key']['value'])")
+            if [ "$got" != "$want" ]; then
+              echo "FAIL: $key = $got, want $want"
+              exit 1
+            fi
+          }
+          check slurm_version    "${{ matrix.slurm_version }}"
+          check cluster_name     linux
+          check conf_path        /etc/slurm/slurm.conf
+          check scheduler_type   sched/backfill
+          check conf_is_complete True
+          check dbd_track_wckey  false
+          check dbd_is_complete  True
+          echo "PASS: conf data sources return the live slurmctld/slurmdbd configuration"
+
+      - name: Verify conf data sources fail cleanly on older API versions
+        if: matrix.api_version != 'v0.0.45'
+        env:
+          TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
+          TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
+          TF_VAR_slurm_api_version: ${{ matrix.api_version }}
+        run: |
+          cd test/fixtures/conf-datasource-tests/
+          # On api_version < v0.0.45 the conf data sources must fail at plan
+          # time with a deterministic, actionable version error — before any
+          # HTTP request. This guards the error path the docs promise.
+          set +e
+          output=$(tofu plan -no-color 2>&1)
+          exit_code=$?
+          set -e
+          echo "$output"
+          if [ "$exit_code" -eq 0 ]; then
+            echo "FAIL: expected plan to fail on api_version ${{ matrix.api_version }}"
+            exit 1
+          fi
+          # tofu wraps diagnostics at ~78 columns, so a needle can be split
+          # across lines mid-phrase. Join the wrapped lines back into one
+          # string (dropping the "│" gutter) before grepping.
+          flat=$(echo "$output" | sed 's/^│//' | tr '\n' ' ' | tr -s ' ')
+          for needle in "requires Slurm 26.05 or later" \
+                        "api_version ${{ matrix.api_version }}" \
+                        'Set api_version = "v0.0.45"'; do
+            if ! echo "$flat" | grep -qF "$needle"; then
+              echo "FAIL: expected version-error text '$needle' was not emitted"
+              exit 1
+            fi
+          done
+          echo "PASS: conf data sources emit a clear version error on ${{ matrix.api_version }}"
 
       - name: Run system-QOS warning fixture (plan-time, no apply)
         env:
