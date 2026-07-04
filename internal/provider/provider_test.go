@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -32,10 +31,7 @@ func TestResolveBoolConfigValue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			os.Unsetenv(envVar)
-			if tt.envValue != "" {
-				t.Setenv(envVar, tt.envValue)
-			}
+			t.Setenv(envVar, tt.envValue)
 			got := resolveBoolConfigValue(ctx, tt.configured, envVar, tt.defaultVal)
 			if got != tt.want {
 				t.Errorf("resolveBoolConfigValue(%v, env=%q, default=%v) = %v, want %v",
