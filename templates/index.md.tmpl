@@ -50,15 +50,15 @@ gracefully instead: they are null on API versions that do not expose them.
 
 The provider validates slurmrestd's TLS certificate by default. If your
 slurmrestd is fronted by HTTPS with a self-signed or internally-issued
-certificate, set `insecure_skip_verify = true` (or
-`SLURM_INSECURE_SKIP_VERIFY`) to skip validation:
+certificate, set `insecure_skip_ssl_verify = true` (or
+`SLURM_INSECURE_SKIP_SSL_VERIFY`) to skip validation:
 
 ```terraform
 provider "slurm" {
-  endpoint             = "https://slurmrestd.internal:6820"
-  token                = var.slurm_token
-  cluster              = "mycluster"
-  insecure_skip_verify = true
+  endpoint                 = "https://slurmrestd.internal:6820"
+  token                    = var.slurm_token
+  cluster                  = "mycluster"
+  insecure_skip_ssl_verify = true
 }
 ```
 
