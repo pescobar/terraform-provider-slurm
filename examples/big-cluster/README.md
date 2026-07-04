@@ -115,10 +115,11 @@ if you want it to match the account.
 This file stays tiny. A user goes here **only** if they:
 
 - belong to more than one account (pick their login `default_account`), or
-- need an `admin_level`.
+- need an `admin_level`, or
+- need a `default_wc_key`.
 
-Single-account users are **not** listed — their default account is derived from
-the one account file that lists them.
+Single-account users with none of these are **not** listed — their default
+account is derived from the one account file that lists them.
 
 ```yaml
 john:
@@ -126,7 +127,18 @@ john:
 carol:
   admin_level: Administrator
   default_account: admin
+dave:
+  default_wc_key: genomics       # dave is single-account but needs a wckey pinned
 ```
+
+> **`default_wc_key` caveat**: Slurm requires the WCKey to already be
+> registered to the user (`sacctmgr add user <name> wckeys=<key>`, or
+> self-service `sacctmgr add wckey <key>`) before it can become their
+> default — otherwise Slurm silently ignores the change with no error.
+> Separately, a known Slurm REST API limitation means `tofu plan` can never
+> read this value back from Slurm to confirm it or detect drift; the write
+> succeeds, but the field is effectively "write-only" from the provider's
+> point of view.
 
 ## The worked multi-account user
 
@@ -150,6 +162,7 @@ QOS there.
 | Give a user a per-account TRES/job limit | Use the object form; see "Supported per-member override fields" above |
 | Set an account-wide TRES/job limit | Add the field to that account's YAML; see "Supported account-level fields" above |
 | Grant admin rights | Add `admin_level` to their `users.yaml` entry |
+| Pin a workload characterization key | Add `default_wc_key` to their `users.yaml` entry |
 
 ## Verifying without applying
 

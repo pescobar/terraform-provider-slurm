@@ -56,8 +56,9 @@ locals {
   # Invert: group memberships by user into the shape slurm_user needs.
   users = {
     for u in distinct([for m in local.memberships : m.user]) : u => {
-      associations = [for m in local.memberships : m if m.user == u]
-      admin_level  = try(local.overrides[u].admin_level, null)
+      associations   = [for m in local.memberships : m if m.user == u]
+      admin_level    = try(local.overrides[u].admin_level, null)
+      default_wc_key = try(local.overrides[u].default_wc_key, null)
       # Login default account: explicit override, else the user's (only) account.
       default_account = try(
         local.overrides[u].default_account,
@@ -96,6 +97,7 @@ resource "slurm_user" "this" {
   name            = each.key
   default_account = each.value.default_account
   admin_level     = each.value.admin_level
+  default_wc_key  = each.value.default_wc_key
 
   dynamic "association" {
     for_each = each.value.associations

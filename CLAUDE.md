@@ -135,6 +135,12 @@ Revisit if SchedMD makes REST-created partitions persistent.
 - **Fix**: Never manage Slurm's built-in QOS names (`normal`, etc.) as provider resources. Rename all test/example QOS to non-system names (`standard`, `priority`, etc.).
 - **Note**: `SlurmInt.Infinite` uses `omitempty` to avoid sending `"infinite":false` explicitly, which is a separate but related concern.
 
+### Known limitation: `default_wc_key` cannot be read back from the REST API
+- **Symptom**: setting `slurm_user.default_wc_key` applies successfully (verified: `sacctmgr show user` confirms the value is stored server-side), but `GET /user/{name}`, `GET /users/?with_assocs=true`, and `GET /associations/` all return `default.wckey` as an empty string — regardless of API version (checked v0.0.42–v0.0.45) — and `GET /wckeys/` returns the WCKey's existence but nothing marking it as anyone's *default* (its `flags` enum only contains `DELETED`).
+- **Cause**: an upstream Slurm REST API gap, not something fixable in this provider.
+- **Consequence**: `default_wc_key` behaves correctly on write but `Read()` can never confirm or detect drift on it — the null-preservation guard (`user.Default.WCKey != "" && !state.DefaultWCKey.IsNull()`) simply never fires, since the API-returned value is always `""`. `tools/generate_import/generate_import.py` has the matching limitation: it reads from the same field and so will never emit `default_wc_key` for any user, even when one is set. See `tools/generate_import/README.md`'s Users section for the user-facing note.
+- **Prerequisite discovered along the way**: Slurm also requires a WCKey to already be registered against the user (`sacctmgr add user <name> wckeys=<key>`, or self-service `sacctmgr add wckey <key>`) before it can become that user's default — setting an unregistered WCKey as default silently no-ops (no error from the REST API; `sacctmgr` itself reports "aren't associated with new default wckey").
+
 ## Key Implementation Notes
 
 ### Null-Preservation Pattern (import behaviour)

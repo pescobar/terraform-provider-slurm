@@ -116,6 +116,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The `slurm_partition` data source tolerates fields that older API versions
   omit: `flags` and `preempt_mode` only exist in the v0.0.45 partition
   schema and are null on older versions instead of failing.
+- **`tools/generate_import/generate_import.py`** had drifted from the
+  `qos`→`allowed_qos` rename above: its internal `_assoc_fields()` extraction
+  and its embedded `generate.tf` template still emitted `qos`, which the
+  provider no longer accepts and which the big-cluster `generate.tf` would
+  silently drop (falls through `try(m.allowed_qos, null)` to `null`). Fixed,
+  and the checked-in `examples/big-cluster/generate.tf` is re-verified
+  byte-identical to the generator's output.
+- The importer was missing `slurm_user.default_wc_key` entirely (both
+  layouts); added, reading `user.default.wckey`. Note: a Slurm REST API
+  limitation (verified against a live 26.05.1 cluster; not fixable in this
+  project) means `default.wckey` always reads back empty regardless of API
+  version, so this field can currently never be populated by the importer
+  even when set in Slurm — the provider has the identical read limitation.
+  Documented in `tools/generate_import/README.md` and `CLAUDE.md`.
+- The importer's `_account_fields()` emitted a spurious `organization` equal
+  to the account's own name: Slurm defaults `Organization` to the account
+  name when unset (verified via `sacctmgr show account`), indistinguishable
+  from an explicit value — same class of issue as the existing `fairshare`
+  handling. Now omitted when it matches the account name.
+- The importer's `_assoc_fields()` could mistake an **inherited** value for
+  an explicit per-user override on five association fields (`default_qos`,
+  `max_jobs`, `max_tres_per_job`, `max_tres_per_node`,
+  `max_tres_mins_per_job`): verified against a live cluster, Slurm's REST
+  API resolves these to the account's own effective value even when the
+  user's association never set them, with no flag distinguishing the two
+  cases. The importer now omits each of these when it matches the parent
+  account's own value (generalizing the anti-inheritance check already
+  used for `allowed_qos`). `grp_tres`/`grp_tres_mins`/`grp_tres_run_mins`
+  do not inherit this way (also verified) and are unaffected. Without this
+  fix, importing a user who merely inherits an account limit would pin
+  that value to the user forever, silently breaking future propagation of
+  account-limit changes.
 
 ### Changed
 
