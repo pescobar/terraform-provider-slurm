@@ -6,8 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-04
+
 ### Added
 
+- **Data sources for every managed entity**: `slurm_qos`, `slurm_account`,
+  and `slurm_user` read existing Slurm entities by name without bringing
+  them under provider management.
+- **`slurm_partition` data source**: looks up a partition from slurmctld
+  (state, flags, allow/deny accounts and QOS, limits, priority). Works with
+  every supported Slurm release (API v0.0.42+). Partitions are deliberately
+  exposed read-only: Slurm 26.05 added partition create/update/delete via
+  REST, but REST-created partitions are not persisted to `slurm.conf` and
+  vanish on slurmctld restart, so a managed resource would drift on every
+  controller restart.
+- **`slurm_conf` and `slurm_dbd_conf` data sources** (Slurm 26.05+ /
+  API v0.0.45+): the active slurmctld / slurmdbd configuration as a
+  `map(string)` plus typed convenience fields (`slurm_version`,
+  `cluster_name`, `conf_path`). Useful for preflight assertions (e.g.
+  `AccountingStorageEnforce` includes `associations`) and cluster facts.
+- **Version-aware error handling**: features that need a newer Slurm release
+  fail at plan time with an actionable message naming the feature, the
+  required Slurm release and API version, the configured `api_version`, and
+  the fix — before any HTTP call. An HTTP 404 fallback covers the inverse
+  case (new `api_version`, older cluster). The provider's connectivity ping
+  now also explains a 404 as an `api_version`/server mismatch and prints the
+  version table.
+- **Plan-time validation**: enum and range checks on resource attributes,
+  cross-field invariants on `slurm_user` (`default_account` must match an
+  association), and a warning when managing Slurm's built-in system QOS
+  (`normal`).
+- **Transient-failure retries**: the client retries retryable HTTP failures
+  (5xx subset, 408, 429, network errors) with exponential backoff;
+  deterministic Slurm rejections are returned immediately.
+- Docker test cluster image for **Slurm 26.05.1**; the acceptance-test matrix
+  now covers 25.05.4 (v0.0.42), 25.11.5 (v0.0.44), and 26.05.1 (v0.0.45).
+  The docker README documents the Slurm-release → API-version mapping.
+- Registry documentation: a Slurm version-compatibility matrix on the
+  provider index page, per-page version-requirement callouts on the
+  v0.0.45-only data sources, and CI validation of every registry doc snippet
+  against the live provider schema.
 - The API client now propagates `context.Context` through every request and
   retry backoff sleep: cancelling an operation (Ctrl-C, timeouts) aborts
   in-flight HTTP calls and pending retries immediately instead of letting
@@ -36,8 +74,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `for_each`. Includes a README with a daily-ops cheat sheet and a worked
   multi-account user example.
 
+### Fixed
+
+- `slurm_qos` `usage_factor` and `usage_threshold` now use `Float64`, so
+  fractional values (e.g. `0.5`) round-trip without truncation.
+- The `slurm_user` data source exposes `association` as a
+  `SetNestedAttribute`, fixing schema handling of multi-association users.
+- The `slurm_partition` data source tolerates fields that older API versions
+  omit: `flags` and `preempt_mode` only exist in the v0.0.45 partition
+  schema and are null on older versions instead of failing.
+
 ### Changed
 
+- The API client is split by entity (`cluster.go`, `account.go`, `qos.go`,
+  `user.go`, `assoc.go`, `partition.go`, `conf.go`) instead of one
+  monolithic `client.go`.
 - `examples/` now contains only end-user-facing content (basic example,
   `big-cluster/`, registry-doc fragments). The seven acceptance-test
   fixture directories moved to `test/fixtures/`; CI workflow paths updated.
@@ -50,9 +101,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Removed
 
 - Dead client methods `GetAccounts`, `GetAllQOS`, `GetAssociation`,
-  `GetUsers` (no references) and the superseded `_account_depth()` in
-  `generate_import.py`. The three data sources now share one
-  `configureDataSourceClient` helper instead of inline copies.
+  `GetUsers`, `GetClusters`, `DeleteCluster` (no references) and the
+  superseded `_account_depth()` in `generate_import.py`. The data sources
+  share one `configureDataSourceClient` helper instead of inline copies.
 
 ### Verified
 
