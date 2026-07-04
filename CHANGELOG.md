@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [2.0.0] - 2026-07-04
+## [0.2.1] - 2026-07-04
 
 ### Breaking Changes
 
@@ -14,8 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   was the same Slurm concept as `slurm_account.allowed_qos` (an
   association's QOS list) but named differently depending on which resource
   exposed it — confusing enough in practice to fix now, while the schema is
-  still young. This is a major-version bump because it changes an existing
-  attribute name.
+  still young (pre-1.0; breaking changes ship in minor/patch releases per
+  semver's rules for `0.x` versions).
 
   **Migration**: rename `qos = [...]` to `allowed_qos = [...]` inside every
   `slurm_user` `association` block (`slurm_account.allowed_qos` is
