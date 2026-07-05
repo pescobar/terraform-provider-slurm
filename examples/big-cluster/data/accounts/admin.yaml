@@ -3,9 +3,13 @@ organization: it
 fairshare: 200
 default_qos: high
 allowed_qos: [high, standard, debug]
-members:
+user_associations:
   - carol
-  # Object form: this membership overrides the QOS for john only.
+  # Object form: overrides john's QOS for this account only. Both fields
+  # below have a slurm_account equivalent, so they go under
+  # account_overrides (see the "Account-level vs association-only fields"
+  # section of README.md).
   - user: john
-    default_qos: debug
-    allowed_qos: [debug, standard]
+    account_overrides:
+      default_qos: debug
+      allowed_qos: [debug, standard]
