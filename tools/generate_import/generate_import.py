@@ -409,7 +409,7 @@ def _account_fields(acc: dict, assoc: Optional[dict], root_qos: list) -> list:
     Extract account attributes as native (key, value) pairs — the single source
     of truth shared by the flat (HCL) and big-cluster (YAML) emitters. Values
     are native ints / strs / lists (of str, or of TRES dicts). Excludes
-    layout-specific bits (flat depends_on, big-cluster members).
+    layout-specific bits (flat depends_on, big-cluster user_associations).
     """
     fields: list = [("name", acc["name"])]
 
