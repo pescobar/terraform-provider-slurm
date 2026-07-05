@@ -34,6 +34,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     importer's generated output, not the `slurm_user`/`slurm_account`
     provider schema itself — no provider-level compatibility impact.
 
+### Documentation
+
+- **`examples/big-cluster/README.md`: verified the account/per-user field
+  tables are exhaustive against the current `slurm_account`/`slurm_user`
+  schema, and added a "What this layout cannot express" section.** Confirmed
+  the 6 real `data/accounts/*.yaml` fixtures collectively exercise all 19
+  per-user fields (`account_overrides` + `association`) and 12 of the 13
+  account-level fields live — `parent_account` is the sole, deliberate
+  exception, already covered by the ordering-caveat note. Added a new section
+  spelling out what these YAML files can *never* express and why: QOS
+  definitions themselves (belong to `slurm_qos`/`qos.tf`), the built-in
+  `root` account, multi-cluster fan-out, an association's `account` (implicit
+  from file placement here), `default_wc_key` (user-level only, lives in
+  `data/users.yaml`), and `id` (always computed). Also added direct links
+  from the two field-reference sections to the matching sections of the
+  generated registry docs (`docs/resources/account.md`,
+  `docs/resources/user.md`) so the example and the authoritative schema
+  reference stay easy to cross-check.
+
 ## [0.2.1] - 2026-07-04
 
 ### Breaking Changes

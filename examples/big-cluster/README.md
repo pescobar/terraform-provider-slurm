@@ -89,7 +89,14 @@ if present in the account YAML; **every key below is optional** except
 `user_associations: []`). The table matches the `slurm_account` resource
 schema field-for-field — if a key isn't in this list, `slurm_account` doesn't
 accept it, and it can never appear under a member's `account_overrides`
-either.
+either. This is a plain transcription of the `Optional` section of
+[`docs/resources/account.md`](../../docs/resources/account.md#optional) (the
+generated, authoritative schema reference) — that page's
+[Null-preservation after import](../../docs/resources/account.md#null-preservation-after-import)
+and
+[`parent_account` drift is not detected once set](../../docs/resources/account.md#parent_account-drift-is-not-detected-once-set)
+sections also apply here unchanged, since these YAML files ultimately produce
+ordinary `slurm_account` resources.
 
 | YAML key | `slurm_account` attribute | Slurm name |
 |----------|---------------------------|------------|
@@ -155,7 +162,18 @@ user_associations:
 The object form of an entry (`- user: <name>` plus `account_overrides:`
 and/or `association:`) accepts **every field** `slurm_user`'s `association`
 block accepts, scoped to that one user's association with that one account —
-split across the two sub-keys as described above.
+split across the two sub-keys as described above. Together the two tables
+below are a plain transcription of the
+[`association` block's nested schema](../../docs/resources/user.md#nestedblock--association)
+in [`docs/resources/user.md`](../../docs/resources/user.md) (the generated,
+authoritative reference) — minus `account`, which that schema requires
+explicitly but which is implicit here (see
+["What this layout cannot express"](#what-this-layout-cannot-express) below).
+That page's
+[why `allowed_qos` is not read during import](../../docs/resources/user.md#why-allowed_qos-is-not-read-during-import)
+and
+[what to declare in config before importing](../../docs/resources/user.md#what-to-declare-in-config-before-importing)
+sections apply here unchanged too.
 
 **`account_overrides`** — same 10 keys as the account-level table, same
 meaning, just scoped to one user:
@@ -249,6 +267,51 @@ type it sets restated in the member's `account_overrides` too, or the two
 won't converge — see **"TRES-list fields ... merge per-TRES-type on read"**
 under [Notes](#notes) below, and `data/accounts/lab_physics.yaml` /
 `lab_bio.yaml` for live-tested examples of restating a shared type.
+
+### What this layout cannot express
+
+The two tables above are the *complete* set of fields these YAML files can
+carry. If a field isn't in one of them, that's not a gap in this example —
+it's not part of the schema, or it's deliberately kept out of `data/`.
+Concretely, out of scope for `data/accounts/*.yaml` and `data/users.yaml`:
+
+- **QOS definitions themselves** — `priority`, `max_wall_pj`, `flags`,
+  `preempt_list`, `preempt_mode`, and a QOS's own TRES limits belong to a
+  different resource, `slurm_qos`, kept as plain HCL in `qos.tf` (see the
+  comment at the top of that file). QOS names and limits change rarely
+  enough that inverting them through `data/` isn't worth it. `allowed_qos`
+  and `default_qos` in the tables above only ever *reference* a QOS by
+  name — they can't define one. See
+  [`docs/resources/qos.md`](../../docs/resources/qos.md).
+- **The `root` account** can never be an entry in `data/accounts/` — it's
+  Slurm's built-in top-level account, not something `slurm_account` creates,
+  updates, or destroys. Same reasoning as never managing the built-in
+  `normal` QOS (see Bug 3 in `CLAUDE.md` and the QOS section of
+  `tools/generate_import/README.md`).
+- **Multi-cluster fan-out.** This provider is single-cluster-scoped — the
+  cluster is set once, on the provider block in `main.tf`. There is no
+  per-account or per-user `cluster:` key here or anywhere else in the
+  provider.
+- **An association's `account`.** In raw HCL, `docs/resources/user.md`'s
+  [`association` block](../../docs/resources/user.md#nestedblock--association)
+  requires `account` explicitly. Here it's implicit: which account an
+  association belongs to is determined entirely by *which account file's
+  `user_associations` list the entry lives in* — there is no `account:` key
+  to write under `account_overrides` or `association`.
+- **`default_wc_key`** lives only in `data/users.yaml`, once per user,
+  cluster-wide — it is not part of `account_overrides` or `association`.
+  The provider has no per-association WCKey to expose (Slurm's WCKey is a
+  user-level default, not an association attribute), so there's nothing to
+  put in a per-account file for it.
+- **`id`** is computed on every resource (it mirrors `name`) and is never a
+  config input, here or in any other layout.
+- **`parent_account`** *is* in the account-level table above — it exists on
+  `slurm_account` — but no real file under `data/accounts/` in this example
+  actually sets it. That's intentional: see the `parent_account` note under
+  [Notes](#notes) below for why it's unsafe in a self-contained,
+  fully-Terraform-managed hierarchy like this one, and
+  `examples/resources/slurm_account/resource.tf` for a live-tested
+  parent/child example in the `flat` layout, where it's safe.
 
 ### Sanitized filenames
 
