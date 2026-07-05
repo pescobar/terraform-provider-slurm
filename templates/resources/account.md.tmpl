@@ -31,15 +31,19 @@ tofu import slurm_account.physics physics
 
 ### Null-preservation after import
 
-`slurm_account` uses **Optional-only** schema fields (no `Computed`). The provider
-only writes a field into state when it is already non-null in prior state. This
-prevents Slurm's inherited defaults — such as `fairshare = 1` or a QOS list
-inherited from the parent account — from appearing as drift after a fresh import.
+Every attribute on `slurm_account` besides `id` and `name` is **Optional-only**
+(no `Computed`). The provider only writes such a field into state when it is
+already non-null in prior state. This prevents Slurm's inherited defaults —
+such as `fairshare = 1` or a QOS list inherited from the parent account — from
+appearing as drift after a fresh import.
 
-After `tofu import`, Optional fields (`fairshare`, `default_qos`, `allowed_qos`,
-etc.) will be null in state. A **reconcile apply** is required to write
-config-declared values to Slurm and populate state. After that, `tofu plan` must
-be clean.
+After `tofu import`, every Optional field (`fairshare`, `default_qos`,
+`allowed_qos`, `parent_account`, etc.) will be null in state, since import only
+populates `id` and `name` before the first refresh. A **reconcile apply** is
+needed to write config-declared values to Slurm and populate state for any
+field your configuration sets — if your configuration leaves a field unset
+(matching the null state left by import), there is nothing to reconcile for
+that field and `tofu plan` will already be clean without it.
 
 ### Standard import workflow
 
@@ -53,3 +57,17 @@ tofu apply
 # Step 3 — verify clean plan (must report no changes)
 tofu plan -detailed-exitcode
 ```
+
+### `parent_account` drift is not detected once set
+
+`parent_account` has a stricter null-preservation rule than the other Optional
+fields: it is only written into state when Slurm's API returns a *non-empty*
+parent (in addition to prior state already being non-null). Slurm reports an
+account directly under the built-in `root` account as an **empty** parent —
+which is indistinguishable, from the provider's point of view, from "not
+tracked yet". Consequence: once you've reconciled a non-root `parent_account`,
+an out-of-band change that moves the account back under `root` (or a failed
+apply that silently leaves it there) is **not detected as drift** — `tofu plan`
+will keep reporting no changes even though Slurm no longer matches your
+configuration. Verified against a live cluster. There is currently no
+workaround short of periodically checking `sacctmgr show account` directly.
