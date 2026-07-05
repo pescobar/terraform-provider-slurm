@@ -49,25 +49,26 @@ After `tofu import`, the state will contain:
 | `association.fairshare` | **No** — null until reconcile |
 | `association.default_qos` | **No** — null until reconcile |
 | `association.max_jobs` | **No** — null until reconcile |
-| `association.qos` | **No** — intentionally skipped (see below) |
+| `association.allowed_qos` | **No** — intentionally skipped (see below) |
 | All other limit fields (`max_jobs_accrue`, TRES limits, etc.) | **No** — null until reconcile |
 
-### Why `qos` is not read during import
+### Why `allowed_qos` is not read during import
 
-The `qos` field in an association block is intentionally never populated during
-`import`. Slurm enforces a constraint that a user's `default_qos` must appear
-in their `qos` list. If the provider read the actual `qos` list from Slurm
-into state but your config does not declare a `qos` block, the reconcile apply
-would attempt to clear the qos list. Slurm rejects that request with:
+The `allowed_qos` field in an association block is intentionally never
+populated during `import`. Slurm enforces a constraint that a user's
+`default_qos` must appear in their `allowed_qos` list. If the provider read
+the actual QOS list from Slurm into state but your config does not declare an
+`allowed_qos` list, the reconcile apply would attempt to clear it. Slurm
+rejects that request with:
 
 ```
 slurmdb_associations_modify failed (This request would make it so some
 associations would not have access to their default qos.)
 ```
 
-Leaving `qos` null after import avoids this: the reconcile only changes what
-config explicitly declares, and does not touch the existing qos list for
-associations where `qos` is absent from config.
+Leaving `allowed_qos` null after import avoids this: the reconcile only
+changes what config explicitly declares, and does not touch the existing QOS
+list for associations where `allowed_qos` is absent from config.
 
 ### Standard import workflow
 
