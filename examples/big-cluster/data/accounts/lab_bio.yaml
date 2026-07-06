@@ -16,16 +16,23 @@ user_associations:
   # Postdoc: job-count throttled during a busy semester, plus a tighter
   # per-user TRES cap than the lab's own account-level limits above.
   - user: bob
-    # account_overrides: fields the account also sets above (max_jobs,
-    # the three TRES-mins/run-mins fields) -- these restate "cpu" because
-    # that's the only type the account itself sets on the same fields.
-    # Slurm merges TRES-list fields PER TYPE on read, not as a whole list —
-    # if the account ever gains another type here (e.g. gres/gpu) and
-    # bob's override doesn't restate it too, the read-back becomes a
-    # merged {cpu: bob's, gpu: inherited} set that never matches this
-    # config. See "TRES-list fields ... merge per-TRES-type on read" under
-    # Notes in README.md, and lab_physics.yaml for a worked example of
-    # restating a second type.
+    # account_overrides: fields the account also sets above.
+    # - max_tres_mins_per_job is one of the fields that inherits the
+    #   account's value per TRES type when a type is omitted here. It
+    #   restates "cpu" only because that's the one type the account itself
+    #   sets on this field (500 below overrides the account's 20000); if the
+    #   account ever gains another type here (e.g. gres/gpu) and bob's
+    #   override doesn't restate it too, the read-back becomes a merged
+    #   {cpu: bob's, gpu: inherited} set that never matches this config. See
+    #   "the three TRES-list fields that inherit ... merge per-TRES-type on
+    #   read" under Notes in README.md, and lab_physics.yaml for a worked
+    #   example with two types.
+    # - max_jobs is a scalar (no per-type merge concern) and max_tres_per_node
+    #   has no account-level equivalent set in this file at all -- both are
+    #   just bob's own explicit values below, nothing to restate.
+    # - grp_tres / grp_tres_mins / grp_tres_run_mins never inherit the
+    #   account's value at all (see README.md), so these are also just bob's
+    #   own explicit values, restating nothing.
     account_overrides:
       max_jobs: 5
       max_tres_per_node:

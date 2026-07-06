@@ -28,8 +28,12 @@ locals {
   # fills unset attributes with null:
   #
   #   account_overrides -- fields slurm_account also has (fairshare,
-  #     default_qos, allowed_qos, max_jobs, TRES limits). The account sets
-  #     a value here that every member inherits unless they override it.
+  #     default_qos, allowed_qos, max_jobs, TRES limits). Most of these
+  #     inherit the account's value when omitted here (default_qos, max_jobs,
+  #     max_tres_per_job, max_tres_per_node, max_tres_mins_per_job,
+  #     allowed_qos); fairshare and grp_tres/grp_tres_mins/grp_tres_run_mins
+  #     do NOT inherit -- Slurm falls back to its own fixed default instead.
+  #     See "What an omitted account_overrides key resolves to" in README.md.
   #
   #   association -- fields that exist ONLY at the association level
   #     (partition, priority, job-count and wall-clock limits). There is no

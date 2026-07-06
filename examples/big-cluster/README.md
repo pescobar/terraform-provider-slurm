@@ -69,8 +69,10 @@ is visible in the YAML itself, not just in prose:
 
 - **`account_overrides`** — fields that `slurm_account` *also* has
   (`fairshare`, `default_qos`, `allowed_qos`, `max_jobs`, and the 6 TRES
-  fields). The account sets a value that every member inherits by default;
-  a value here **overrides** that inherited value for this one user.
+  fields). For most of these, the account sets a value that every member
+  inherits by default, and a value here **overrides** that inherited value
+  for this one user — but not all 10 keys inherit; see "What an omitted
+  `account_overrides` key resolves to" below for the exact split.
 - **`association`** — fields that exist **only** at the association level
   (`partition`, `priority`, the job-count limits, `max_wall_pj`, `grp_wall`).
   `slurm_account` has no matching attribute for any of these — there is
@@ -251,22 +253,42 @@ user_associations:
       grp_wall: 2000
 ```
 
-Any key omitted from a member's `account_overrides`/`association` falls back
-to Slurm's own default for that association (not the account's value) — set
-it explicitly if you want it to match the account. See the
-**inherited-value ambiguity** note in `tools/generate_import/README.md` if
-you plan to re-import this cluster later: Slurm cannot distinguish
-"explicitly set to the same value as the account" from "inheriting from the
-account" for `default_qos`, `max_jobs`, `max_tres_per_job`,
-`max_tres_per_node`, and `max_tres_mins_per_job`.
+What an omitted `account_overrides` key resolves to at the association level
+depends on the field, and it's not the same answer for all of them:
+
+- `default_qos`, `max_jobs`, `max_tres_per_job`, `max_tres_per_node`,
+  `max_tres_mins_per_job`, and `allowed_qos` — omitting these means the
+  association **inherits the account's own value** for that field (this is
+  the "every member inherits by default" behavior described above).
+- `fairshare` — omitting it does **not** inherit the account's fairshare;
+  Slurm falls back to its own fixed default (`1`) regardless of what the
+  account is set to.
+- `grp_tres`, `grp_tres_mins`, `grp_tres_run_mins` — these also do **not**
+  inherit the account's value when omitted; Slurm falls back to its own
+  (unlimited) default for the association.
+
+Set a field explicitly under `account_overrides` any time you want the
+member's association to match the account's current value for `fairshare`
+or the `grp_tres*` fields — for the other six, omitting it already gets you
+the account's value, by inheritance.
+
+See the **inherited-value ambiguity** note in `tools/generate_import/README.md`
+if you plan to re-import this cluster later: because the first six fields
+above inherit, Slurm cannot distinguish "explicitly set to the same value as
+the account" from "inheriting from the account" for `default_qos`,
+`max_jobs`, `max_tres_per_job`, `max_tres_per_node`, and
+`max_tres_mins_per_job` — the importer's response is to omit each field
+whenever it matches the account's own value, on the assumption that a match
+means inheritance.
 
 The reference member above only sets one `max_tres_per_job` type (`gpu`)
 because this illustrative account doesn't set that field at all — nothing to
 merge with. A **real** account that also sets `max_tres_per_job` needs every
 type it sets restated in the member's `account_overrides` too, or the two
-won't converge — see **"TRES-list fields ... merge per-TRES-type on read"**
-under [Notes](#notes) below, and `data/accounts/lab_physics.yaml` /
-`lab_bio.yaml` for live-tested examples of restating a shared type.
+won't converge — see **"The three TRES-list fields that inherit ... merge
+per-TRES-type on read"** under [Notes](#notes) below, and
+`data/accounts/lab_physics.yaml` / `lab_bio.yaml` for live-tested examples of
+restating a shared type.
 
 ### What this layout cannot express
 
@@ -350,6 +372,10 @@ john:
 carol:
   admin_level: Administrator
   default_account: admin
+# dave: not a real entry (he needs neither multi-account default nor
+# admin_level, so he isn't listed at all in the actual data/users.yaml) --
+# shown here only to illustrate default_wc_key syntax for a single-account
+# user who did need one pinned:
 dave:
   default_wc_key: genomics       # dave is single-account but needs a wckey pinned
 ```
@@ -505,10 +531,10 @@ inversion stage by stage:
   `data/accounts/shared.yaml` (safe: john, non-default account) vs.
   `teaching.yaml` (dave's entry intentionally omits `partition` for this
   reason) and the matching entry in `CLAUDE.md`.
-- **TRES-list fields (`max_tres_per_job`, `grp_tres`, etc., under either the
-  account-level top-level keys or a member's `account_overrides`) merge
-  per-TRES-type on read, not as a whole list.** If an account sets
-  `max_tres_per_job` for both `cpu` and `gres/gpu`, and a member's own
+- **The three TRES-list fields that inherit (`max_tres_per_job`,
+  `max_tres_per_node`, `max_tres_mins_per_job`) merge per-TRES-type on
+  read, not as a whole list.** If an account sets `max_tres_per_job` for
+  both `cpu` and `gres/gpu`, and a member's own
   `account_overrides.max_tres_per_job` only sets `gpu`, Slurm's association
   read returns *both* — the account's `cpu` entry plus the member's `gpu`
   entry — not just the explicit override. A config that only declares the
@@ -520,3 +546,7 @@ inversion stage by stage:
   affect the importer (`--layout big-cluster` / `--layout flat`): it always
   captures the full, already-merged list Slurm returns, so a partial
   override is handled correctly by construction.
+  `grp_tres`/`grp_tres_mins`/`grp_tres_run_mins` are **not** affected by
+  this — per "What an omitted `account_overrides` key resolves to" above,
+  they never inherit from the account at all (whole field or per-type), so
+  there's nothing to merge and nothing to restate for them.
