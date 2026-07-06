@@ -399,6 +399,63 @@ tofu validate
 echo '{ for u, v in local.users : u => sort([for a in v.associations : a.account]) }' | tofu console
 ```
 
+## Debugging `generate.tf`
+
+`generate.tf`'s `for_each`/`locals` inversion is expanded entirely **in
+memory** during `tofu plan`/`apply` — there is no generated `.tf` file (or
+any other file) written to disk that you can open and inspect. If the
+resources OpenTofu plans don't match what you expect, work through the
+inversion stage by stage:
+
+1. **`tofu console` — inspect any local directly, cheapest option:**
+
+   ```
+   > local.accounts                              # raw YAML per account file
+   > local.accounts.lab_physics.user_associations # one account's raw list
+   > local.memberships                           # flattened, before inversion
+   > local.users.john                            # john's final resolved shape
+   > local.users.john.associations                # every association john gets
+   ```
+
+   This shows exactly what each stage of the inversion produces, before it
+   ever reaches a resource — the fastest way to catch a YAML typo or a
+   `try(...)` silently falling through to `null`.
+
+2. **Isolate a single YAML file** if `yamldecode()` itself is erroring (bad
+   indentation, wrong type, etc.) — an error against `local.accounts` points
+   at the whole `for` expression, not the specific file. Decode one file
+   directly instead:
+
+   ```
+   > yamldecode(file("data/accounts/lab_bio.yaml"))
+   ```
+
+3. **Plain `tofu plan`** already shows every `slurm_account.this["<key>"]` /
+   `slurm_user.this["<key>"]` instance with all attributes fully resolved —
+   no more `try()`/`for` expressions, just final values. Often this alone is
+   enough.
+
+4. **`tofu show -json`** for the fully resolved plan or state as structured
+   JSON, useful for grepping/diffing many users at once:
+
+   ```sh
+   tofu plan -out=plan.tfplan
+   tofu show -json plan.tfplan | jq '.resource_changes[] | select(.address == "slurm_user.this[\"john\"]")'
+
+   # or, from state after apply:
+   tofu show -json | jq '.values.root_module.resources[] | select(.address == "slurm_user.this[\"john\"]")'
+   ```
+
+5. **`tofu state show`** for one resource instance, human-readable:
+
+   ```sh
+   tofu state show 'slurm_user.this["john"]'
+   ```
+
+6. **`TF_LOG=debug tofu plan`** if the problem looks like a provider/API
+   issue rather than a `generate.tf` logic issue — this logs the actual HTTP
+   requests/responses to `slurmrestd`.
+
 ## Notes
 
 - `generate.tf` adds `depends_on` so QOS are created before accounts, and
