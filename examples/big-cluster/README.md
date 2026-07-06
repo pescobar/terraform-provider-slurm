@@ -117,8 +117,10 @@ ordinary `slurm_account` resources.
 | `grp_tres_run_mins` | `grp_tres_run_mins` | GrpTRESRunMins — max TRES-minutes of currently running jobs across the group |
 
 TRES fields (any key ending in `_tres*`) use a list-of-objects shape: `type`
-(e.g. `cpu`, `mem`, `gres`), optional `name` for generic resources like
-`gres` (e.g. `gpu`), and `count`. These same 10 keys (plus `fairshare`,
+(e.g. `cpu`, `mem`, `gres`), `name` (**mandatory** for generic resources like
+`gres` — e.g. `gpu` — to say which one; **optional** for `cpu`/`mem`, which
+have no sub-resource to name, so you can set it or leave it out), and
+`count`. These same 10 keys (plus `fairshare`,
 `default_qos`, `allowed_qos`, `max_jobs`) are exactly the set that's also
 valid under a member's `account_overrides:` — see the next section.
 
