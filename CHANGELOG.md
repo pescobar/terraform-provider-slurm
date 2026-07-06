@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-06
+
 ### Changed
 
 - **`examples/big-cluster/` account YAML: `members:` renamed to
@@ -30,12 +32,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     apply → clean plan → destroy, and `generate_import.py` for both
     `--layout flat` and `--layout big-cluster` against the same populated
     cluster, each through the full import → reconcile → clean-plan cycle.
-  - This only affects the illustrative big-cluster example and the
-    importer's generated output, not the `slurm_user`/`slurm_account`
-    provider schema itself — no provider-level compatibility impact.
+  - **Migration**: this only affects the illustrative big-cluster example and
+    the importer's generated output, not the `slurm_user`/`slurm_account`
+    provider schema itself — no provider-level compatibility impact. If
+    you've already adopted the big-cluster layout from a prior release,
+    rename `members:` to `user_associations:` in every
+    `data/accounts/*.yaml` file, and split each object-form entry's override
+    keys into `account_overrides:`/`association:` per the tables in
+    `examples/big-cluster/README.md`.
+
+### Fixed
+
+- **Registry docs (`docs/resources/user.md`) still referenced the pre-rename
+  `qos` association attribute** in the import-behavior table and a section
+  heading ("Why `qos` is not read during import"), missed when
+  `slurm_user`'s `qos` attribute was renamed to `allowed_qos` in `v0.2.1`.
+  Corrected to `allowed_qos` throughout, in both
+  `templates/resources/user.md.tmpl` and the generated `docs/resources/user.md`.
+- Stale `"big-cluster members"` wording in a `generate_import.py` docstring
+  (`_account_fields()`), left over from the `user_associations` rename above.
 
 ### Documentation
 
+- **`parent_account` drift-blindness is now documented in the published
+  registry docs**, not just `CLAUDE.md`. Reproduced live: reconciling
+  `parent_account` to a non-root value, then resetting it to `root`
+  out-of-band via `sacctmgr`, leaves `tofu plan` reporting "No changes"
+  indefinitely — Slurm returns an empty parent for any account directly
+  under `root`, which is indistinguishable from "not yet tracked" by the
+  provider's null-preservation guard. Added a new
+  "`parent_account` drift is not detected once set" section to
+  `docs/resources/account.md` (and its `templates/` source), cross-referenced
+  from `CLAUDE.md`.
+- Clarified `docs/resources/account.md`'s "Null-preservation after import"
+  wording: a reconcile apply is only needed for fields your configuration
+  actually sets a value for — a bare import against a bare config is already
+  a clean `tofu plan` with no reconcile step required. Verified live.
 - **`examples/big-cluster/README.md`: verified the account/per-user field
   tables are exhaustive against the current `slurm_account`/`slurm_user`
   schema, and added a "What this layout cannot express" section.** Confirmed
@@ -52,6 +84,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   generated registry docs (`docs/resources/account.md`,
   `docs/resources/user.md`) so the example and the authoritative schema
   reference stay easy to cross-check.
+- **`examples/big-cluster/README.md`: added a "Debugging `generate.tf`"
+  section.** Explains that the `for_each`/`locals` inversion is expanded
+  entirely in memory (no generated `.tf` file ever written to disk), and
+  documents concrete tools to inspect it stage-by-stage: `tofu console`
+  against individual locals (`local.accounts`, `local.memberships`,
+  `local.users`), isolating a single `yamldecode()` call, `tofu plan`/
+  `show -json`, `tofu state show`, and `TF_LOG=debug` for provider/API-level
+  issues.
 
 ## [0.2.1] - 2026-07-04
 
