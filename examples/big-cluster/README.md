@@ -73,6 +73,15 @@ is visible in the YAML itself, not just in prose:
   inherits by default, and a value here **overrides** that inherited value
   for this one user — but not all 10 keys inherit; see "What an omitted
   `account_overrides` key resolves to" below for the exact split.
+
+  This sub-key is defined by *"`slurm_account` also has this field"*, not by
+  *"this field inherits from the account"* — those are two different
+  questions, and `fairshare` is the one field where they disagree: the
+  account genuinely has its own `fairshare` (so the key belongs here), but a
+  member's `fairshare` never inherits it (see below for why). It stays under
+  `account_overrides` rather than `association` because it's still the same
+  Slurm attribute at a different node of the association tree, not because
+  setting it here overrides an inherited value.
 - **`association`** — fields that exist **only** at the association level
   (`partition`, `priority`, the job-count limits, `max_wall_pj`, `grp_wall`).
   `slurm_account` has no matching attribute for any of these — there is
@@ -264,7 +273,14 @@ depends on the field, and it's not the same answer for all of them:
   the "every member inherits by default" behavior described above).
 - `fairshare` — omitting it does **not** inherit the account's fairshare;
   Slurm falls back to its own fixed default (`1`) regardless of what the
-  account is set to.
+  account is set to. This isn't an arbitrary gap: fairshare isn't a policy
+  limit that cascades down, it's a *sibling weight* — Slurm's fair-share
+  scheduler compares an association's fairshare against its siblings at the
+  *same tier* of the association tree (accounts vs. sibling accounts under
+  the same parent; users vs. sibling users within the same account). A
+  user's fairshare and its account's fairshare are weights at different
+  tiers, so there's no meaningful value to copy down; every association that
+  doesn't set its own just gets the same flat default.
 - `grp_tres`, `grp_tres_mins`, `grp_tres_run_mins` — these also do **not**
   inherit the account's value when omitted; Slurm falls back to its own
   (unlimited) default for the association.
