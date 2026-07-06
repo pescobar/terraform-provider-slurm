@@ -189,20 +189,24 @@ and
 sections apply here unchanged too.
 
 **`account_overrides`** — same 10 keys as the account-level table, same
-meaning, just scoped to one user:
+meaning, just scoped to one user. **If omitted** says what that member's
+association resolves to when this key isn't set here at all — this is the
+one thing that differs field by field, so check it before assuming a blank
+key means "same as the account" (see "What an omitted `account_overrides`
+key resolves to" below for the full explanation of each row):
 
-| YAML key | `association` attribute | Slurm name |
-|----------|--------------------------|------------|
-| `fairshare` | `fairshare` | Fairshare |
-| `default_qos` | `default_qos` | DefaultQOS |
-| `allowed_qos` | `allowed_qos` | QOS — this user's own list; overrides the account's `allowed_qos` for this membership |
-| `max_jobs` | `max_jobs` | MaxJobs |
-| `max_tres_per_job` | `max_tres_per_job` | MaxTRES |
-| `max_tres_per_node` | `max_tres_per_node` | MaxTRESPerNode |
-| `max_tres_mins_per_job` | `max_tres_mins_per_job` | MaxTRESMins |
-| `grp_tres` | `grp_tres` | GrpTRES |
-| `grp_tres_mins` | `grp_tres_mins` | GrpTRESMins |
-| `grp_tres_run_mins` | `grp_tres_run_mins` | GrpTRESRunMins |
+| YAML key | `association` attribute | Slurm name | If omitted |
+|----------|--------------------------|------------|------------|
+| `fairshare` | `fairshare` | Fairshare | **Not inherited** — Slurm's fixed default (`1`), regardless of the account's value |
+| `default_qos` | `default_qos` | DefaultQOS | Inherits the account's value |
+| `allowed_qos` | `allowed_qos` | QOS — this user's own list; overrides the account's `allowed_qos` for this membership | Inherits the account's value |
+| `max_jobs` | `max_jobs` | MaxJobs | Inherits the account's value |
+| `max_tres_per_job` | `max_tres_per_job` | MaxTRES | Inherits the account's value, merged **per TRES type** if partially set |
+| `max_tres_per_node` | `max_tres_per_node` | MaxTRESPerNode | Inherits the account's value, merged **per TRES type** if partially set |
+| `max_tres_mins_per_job` | `max_tres_mins_per_job` | MaxTRESMins | Inherits the account's value, merged **per TRES type** if partially set |
+| `grp_tres` | `grp_tres` | GrpTRES | **Not inherited** — Slurm's own (unlimited) default, regardless of the account's value |
+| `grp_tres_mins` | `grp_tres_mins` | GrpTRESMins | **Not inherited** — Slurm's own (unlimited) default, regardless of the account's value |
+| `grp_tres_run_mins` | `grp_tres_run_mins` | GrpTRESRunMins | **Not inherited** — Slurm's own (unlimited) default, regardless of the account's value |
 
 **`association`** — the 9 fields with no account-level equivalent; declared,
 never "overridden":
