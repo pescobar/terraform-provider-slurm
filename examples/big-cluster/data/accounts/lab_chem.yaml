@@ -3,5 +3,5 @@ organization: chemistry
 fairshare: 80
 default_qos: standard
 allowed_qos: [standard]
-members:
+user_associations:
   - john

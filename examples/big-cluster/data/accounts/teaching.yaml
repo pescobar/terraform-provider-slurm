@@ -10,7 +10,7 @@ max_tres_per_node:
 grp_tres:
   - type: cpu
     count: 200
-members:
+user_associations:
   # TA slot: tighter, TA-appropriate limits.
   # (No `partition:` here on purpose — teaching is dave's only/default
   # account, and scoping a user's DEFAULT-account association to a
@@ -20,9 +20,11 @@ members:
   # multi-account user) demonstrates `partition` safely on a non-default
   # account instead.
   - user: dave
-    fairshare: 15
-    priority: 20
-    max_wall_pj: 240
-    grp_wall: 2000
+    account_overrides:
+      fairshare: 15
+    association:
+      priority: 20
+      max_wall_pj: 240
+      grp_wall: 2000
   - carol
   - john

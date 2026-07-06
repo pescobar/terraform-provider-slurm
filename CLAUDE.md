@@ -151,13 +151,13 @@ Revisit if SchedMD makes REST-created partitions persistent.
 ### Known limitation: a `partition`-scoped association on a user's default account creates a phantom duplicate
 - **Symptom**: `slurm_user.Create()` first calls the atomic `users_association/` endpoint to bootstrap the user with an association for `default_account` (no `partition` in that call — see `client.UserAssociationCondition`), then separately calls `CreateAssociations()` with the full, plan-declared association list. If the config's association *for that same default account* also sets `partition`, Slurm ends up with **two** associations for that user+account: the unscoped one from the bootstrap call, and the partition-scoped one from the real config. `Read()` then reports both, and `tofu plan` shows a perpetual diff trying to remove the phantom unscoped one — which reappears every apply, since the bootstrap step recreates it.
 - **Verified against a live cluster**: reproduced with a single-account user whose one association set `partition`; confirmed via `GET /associations/?user=<name>` returning two rows (`partition: ""` and `partition: "<value>"`) for the same account.
-- **Workaround**: don't set `partition` on the association for a user's own `default_account`. It's safe on any *other* account the user belongs to (multi-account users only), since only the bootstrap call for `default_account` has this behavior. `examples/big-cluster/data/accounts/shared.yaml` demonstrates the safe case (`partition` on john's non-default account); `teaching.yaml` has a comment explaining why dave's (default-account) association doesn't use it.
+- **Workaround**: don't set `partition` on the association for a user's own `default_account`. It's safe on any *other* account the user belongs to (multi-account users only), since only the bootstrap call for `default_account` has this behavior. `examples/big-cluster/data/accounts/shared.yaml` demonstrates the safe case (`association: { partition: cpu }` on john's non-default account); `teaching.yaml` has a comment explaining why dave's (default-account) entry doesn't use it.
 - **Not yet fixed**: a real fix would need `Create()` to either pass `partition` through the bootstrap call when the default-account association has one, or skip/delete the bootstrap association when a same-account, partition-scoped one is about to be created in the same apply.
 
 ### Known limitation: TRES limits merge per-type on read, so a partial override never converges
 - **Symptom**: when an account sets `max_tres_per_job` (or any other TRES-list field) for types `{cpu, gres/gpu}` and a user's own association overrides only one of those types (e.g. just `gres/gpu`), Slurm's association read returns the **merged** set — the account's `cpu` entry plus the user's own `gpu` entry — not just the user's explicit override. If the HCL/YAML config declares only the user's intended override (`gpu` alone), `tofu plan` shows perpetual drift trying to remove the `cpu` entry Slurm keeps re-adding.
 - **Verified against a live cluster**: `GET /associations/?user=<name>&account=<account>` for an association whose config set only `{gres/gpu: 2}` returned `[{cpu: 64}, {gres/gpu: 2}]` — the `cpu: 64` came from the account's own `max_tres_per_job`, not the user's config.
-- **Workaround**: when partially overriding a TRES-list field at the association level, restate every TRES type the parent account sets on that same field, not just the type(s) you're actually changing. `examples/big-cluster/data/accounts/lab_physics.yaml` demonstrates this (john's `max_tres_per_job` override restates `cpu: 64` alongside his own `gres/gpu: 2`).
+- **Workaround**: when partially overriding a TRES-list field at the association level, restate every TRES type the parent account sets on that same field, not just the type(s) you're actually changing. `examples/big-cluster/data/accounts/lab_physics.yaml` demonstrates this (john's `account_overrides.max_tres_per_job` restates `cpu: 64` alongside his own `gres/gpu: 2`).
 - **Note for `tools/generate_import/generate_import.py`**: the importer's inheritance-detection fix (see the `_assoc_fields()` changelog entry) already handles this correctly by construction — it captures whatever *raw* (already-merged) TRES list Slurm returns and only skips emitting it when that whole list matches the account's own, so a partial override like this one is captured in full automatically. This limitation only bites **hand-written** configs that don't know to restate the untouched types.
 
 ### Known limitation: `slurm_user.Create()` can leave an orphaned, untracked user in Slurm on a partial failure
@@ -266,17 +266,32 @@ terraform-provider-slurm/
 For clusters with hundreds of accounts and thousands of users, a flat
 `users.tf` is unmaintainable. The `big-cluster` example demonstrates a
 data-driven alternative: sysadmins edit **account-centric** YAML
-(`data/accounts/<name>.yaml` holds account metadata + a member list;
-`data/users.yaml` holds only exceptions — admins and multi-account default
-picks), and `generate.tf` **inverts** that into the **user-centric**
+(`data/accounts/<name>.yaml` holds account metadata + a `user_associations`
+list; `data/users.yaml` holds only exceptions — admins and multi-account
+default picks), and `generate.tf` **inverts** that into the **user-centric**
 `slurm_user`/`slurm_account` resources the provider needs (a `slurm_user`
 carries all of its associations, so a multi-account user cannot be split across
-per-account files in raw HCL — hence the inversion). Membership is normalized
-with `try(m.user, m)` to accept both bare-string and object-with-overrides
-members; a `?:` conditional is avoided because Terraform won't unify `string`
-with `null`. Migrating a flat config to this layout changes resource addresses,
-so `moved {}` blocks (or `tofu state mv`) are required to avoid
-destroy/recreate of live Slurm entities.
+per-account files in raw HCL — hence the inversion).
+
+Each `user_associations` entry is normalized with `try(m.user, m)` to accept
+both a bare string ("alice", no overrides) and an object form. The object
+form splits association attributes into two sub-maps so the "override
+account defaults" vs "declare association-only data" distinction is visible
+in the YAML itself, not just in prose (see "Two kinds of per-user data" in
+`examples/big-cluster/README.md`):
+- `account_overrides` — fields `slurm_account` also has (fairshare,
+  default_qos, allowed_qos, max_jobs, TRES limits); a value here overrides
+  what the member would otherwise inherit from the account.
+- `association` — fields that exist only at the association level
+  (partition, priority, job-count/wall-clock limits); there's nothing to
+  inherit, these are declared, not overridden.
+
+`try(m.account_overrides.fairshare, null)`-style lookups read each field, so
+a bare-string entry (which has neither sub-map) safely falls through to
+`null` for every field. A `?:` conditional is avoided because Terraform
+won't unify `string` with `null`. Migrating a flat config to this layout
+changes resource addresses, so `moved {}` blocks (or `tofu state mv`) are
+required to avoid destroy/recreate of live Slurm entities.
 
 To import an existing cluster directly into this layout, run
 `tools/generate_import/generate_import.py --layout big-cluster` — it emits the

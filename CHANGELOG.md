@@ -6,6 +6,53 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **`examples/big-cluster/` account YAML: `members:` renamed to
+  `user_associations:`, and the object form's flat list of override keys
+  split into two explicit sub-keys.** Prompted by user feedback that
+  `partition` (and other association-only fields) being settable in a
+  "member override" block was confusing when the account itself has no
+  `partition` field to override.
+  - `account_overrides` — fields `slurm_account` also has (`fairshare`,
+    `default_qos`, `allowed_qos`, `max_jobs`, the 6 TRES fields). A value
+    here overrides what the member would otherwise inherit from the
+    account.
+  - `association` — the 9 fields with no account-level equivalent at all
+    (`partition`, `priority`, `max_jobs_accrue`, `max_submit_jobs`,
+    `max_wall_pj`, `grp_jobs`, `grp_jobs_accrue`, `grp_submit_jobs`,
+    `grp_wall`). Declared, never "overridden" — there's nothing to inherit.
+  - `generate.tf` and `generate_import.py`'s `--layout big-cluster` writer
+    updated to match (byte-identical, as always); all 6 real
+    `data/accounts/*.yaml` fixtures, `examples/big-cluster/README.md`,
+    `tools/generate_import/README.md`, and `CLAUDE.md` updated throughout.
+  - Verified end-to-end against a live 26.05.1 cluster: `examples/big-cluster/`
+    apply → clean plan → destroy, and `generate_import.py` for both
+    `--layout flat` and `--layout big-cluster` against the same populated
+    cluster, each through the full import → reconcile → clean-plan cycle.
+  - This only affects the illustrative big-cluster example and the
+    importer's generated output, not the `slurm_user`/`slurm_account`
+    provider schema itself — no provider-level compatibility impact.
+
+### Documentation
+
+- **`examples/big-cluster/README.md`: verified the account/per-user field
+  tables are exhaustive against the current `slurm_account`/`slurm_user`
+  schema, and added a "What this layout cannot express" section.** Confirmed
+  the 6 real `data/accounts/*.yaml` fixtures collectively exercise all 19
+  per-user fields (`account_overrides` + `association`) and 12 of the 13
+  account-level fields live — `parent_account` is the sole, deliberate
+  exception, already covered by the ordering-caveat note. Added a new section
+  spelling out what these YAML files can *never* express and why: QOS
+  definitions themselves (belong to `slurm_qos`/`qos.tf`), the built-in
+  `root` account, multi-cluster fan-out, an association's `account` (implicit
+  from file placement here), `default_wc_key` (user-level only, lives in
+  `data/users.yaml`), and `id` (always computed). Also added direct links
+  from the two field-reference sections to the matching sections of the
+  generated registry docs (`docs/resources/account.md`,
+  `docs/resources/user.md`) so the example and the authoritative schema
+  reference stay easy to cross-check.
+
 ## [0.2.1] - 2026-07-04
 
 ### Breaking Changes

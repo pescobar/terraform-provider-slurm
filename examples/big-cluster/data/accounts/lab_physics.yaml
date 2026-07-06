@@ -9,21 +9,22 @@ max_tres_per_job:
   - type: gres
     name: gpu
     count: 8
-members:
+user_associations:
   - alice
   - user: john             # per-user GPU cap, tighter than the account's own
-    max_tres_per_job:
-      # Slurm merges max_tres_per_job PER TRES TYPE, not as a whole list: an
-      # association missing a type here still inherits that type from the
-      # account. Restate every type the account sets (cpu here) even when
-      # you only mean to override one of them (gpu) — otherwise Slurm's
-      # read-back is the merged {cpu: inherited, gpu: overridden} set,
-      # which never matches a config declaring gpu alone and shows
-      # perpetual drift in `tofu plan` (verified against a live cluster).
-      # See "TRES-list fields ... merge per-TRES-type on read" under Notes
-      # in README.md for the general rule.
-      - type: cpu
-        count: 64
-      - type: gres
-        name: gpu
-        count: 2
+    account_overrides:
+      max_tres_per_job:
+        # Slurm merges max_tres_per_job PER TRES TYPE, not as a whole list:
+        # an association missing a type here still inherits that type from
+        # the account. Restate every type the account sets (cpu here) even
+        # when you only mean to override one of them (gpu) — otherwise
+        # Slurm's read-back is the merged {cpu: inherited, gpu: overridden}
+        # set, which never matches a config declaring gpu alone and shows
+        # perpetual drift in `tofu plan` (verified against a live cluster).
+        # See "TRES-list fields ... merge per-TRES-type on read" under
+        # Notes in README.md for the general rule.
+        - type: cpu
+          count: 64
+        - type: gres
+          name: gpu
+          count: 2

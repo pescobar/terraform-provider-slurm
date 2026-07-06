@@ -63,15 +63,21 @@ the user-centric resources the provider needs (see
 | `main.tf` | `terraform {}` block, provider config, token variable |
 | `qos.tf` | One `slurm_qos` resource per QOS (plain HCL, as in flat) |
 | `generate.tf` | `locals` + `for_each` that build the resources from `data/` |
-| `data/accounts/<name>.yaml` | One file per account: metadata + member list |
+| `data/accounts/<name>.yaml` | One file per account: metadata + `user_associations` list |
 | `data/users.yaml` | Exceptions only: admins and multi-account default picks |
 | `imports.tf` | `import {}` blocks targeting the `for_each` addresses (`slurm_account.this["…"]`) |
 
 Notes specific to `big-cluster`:
 
 - **Account membership is inverted** from Slurm's user-centric associations:
-  each account file lists the users associated with it. Per-association limits
-  (QOS, fairshare, max_jobs, TRES, …) are carried as an object-form member.
+  each account file's `user_associations` list carries every user associated
+  with it. Per-association data is split across two sub-keys on the object
+  form of an entry: `account_overrides` for fields `slurm_account` also has
+  (QOS, fairshare, max_jobs, TRES limits — a value here overrides what the
+  member would otherwise inherit from the account), and `association` for
+  fields with no account-level equivalent (partition, priority, job-count
+  and wall-clock limits — declared, not overridden). See "Two kinds of
+  per-user data" in `examples/big-cluster/README.md`.
 - **`data/users.yaml` stays tiny.** A user is listed only if they have an
   `admin_level` or belong to more than one account (to pin their login
   `default_account`). Single-account users are derived automatically.
@@ -231,10 +237,11 @@ re-running.
   association scoped to a specific partition, the `partition` field is
   included in the `association {}` block.
 - **(`--layout big-cluster` only) Users with zero associations are skipped.**
-  The account-centric layout represents users as members of accounts, so a user
-  with no associations has nowhere to live and is omitted (reported as a warning
-  listing the skipped names). In practice such users can't run jobs, so this is
-  usually harmless. If you must manage association-less users, they would need
-  to be added to `data/users.yaml` and `generate.tf` extended to create
-  association-less `slurm_user` resources from those entries — this is not done
+  The account-centric layout represents users as entries in some account's
+  `user_associations` list, so a user with no associations has nowhere to
+  live and is omitted (reported as a warning listing the skipped names). In
+  practice such users can't run jobs, so this is usually harmless. If you
+  must manage association-less users, they would need to be added to
+  `data/users.yaml` and `generate.tf` extended to create association-less
+  `slurm_user` resources from those entries — this is not done
   automatically. The `flat` layout is unaffected (it emits every user).

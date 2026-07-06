@@ -3,10 +3,13 @@ organization: shared
 fairshare: 40
 default_qos: standard
 allowed_qos: [standard]
-members:
+user_associations:
   # partition-scoping demonstrated here (not on dave in teaching.yaml)
   # because john's default_account is lab_physics, not shared — scoping a
   # NON-default-account association to a partition is safe. See the
-  # `partition` caveat in teaching.yaml / the Notes section.
+  # `partition` caveat in teaching.yaml / the Notes section. partition has
+  # no slurm_account equivalent at all, so it goes under association, not
+  # account_overrides.
   - user: john
-    partition: cpu
+    association:
+      partition: cpu
