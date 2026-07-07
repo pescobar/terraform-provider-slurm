@@ -1,0 +1,11 @@
+# Exceptions only: users who belong to more than one account, pinning which
+# one is their login default_account. Single-account users are NOT listed
+# here: their default account is derived automatically from the one account
+# file that lists them.
+
+# john is a member of 6 accounts (lab_physics + 5 extra: lab_bio, lab_chem,
+# teaching, admin, shared). Pick which one is his login default.
+john: lab_physics
+
+# carol is a cluster admin, member of teaching + admin.
+carol: admin

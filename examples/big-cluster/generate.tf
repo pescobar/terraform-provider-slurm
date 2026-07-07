@@ -2,8 +2,10 @@
 # generate.tf — write once, rarely touched.
 #
 # Sysadmins edit the human-friendly, ACCOUNT-CENTRIC data under data/:
-#   - data/accounts/<name>.yaml : account metadata + its user_associations list
-#   - data/users.yaml           : ONLY exceptions (admins, multi-account default)
+#   - data/accounts/<name>.yaml       : account metadata + its user_associations list
+#   - data/users/admin_level.yaml     : ONLY users with a non-default admin_level
+#   - data/users/default_accounts.yaml: ONLY multi-account users (login default pin)
+#   - data/users/wckeys.yaml          : ONLY users with a pinned default_wc_key
 #
 # This file inverts that account-centric data into the USER-CENTRIC resources
 # the Slurm provider requires (a slurm_user carries all of its associations).
@@ -19,8 +21,14 @@ locals {
     trimsuffix(f, ".yaml") => yamldecode(file("${local.accounts_dir}/${f}"))
   }
 
-  # Per-user exceptions only. Everyone else is derived automatically.
-  overrides = yamldecode(file("${path.module}/data/users.yaml"))
+  # Per-user exceptions only, one file per concern -- everyone else is
+  # derived automatically. Split into separate files (rather than one
+  # data/users.yaml) so each stays small and scannable as the cluster grows:
+  # skimming "who's an admin?" shouldn't require reading past every
+  # multi-account user's default-account pin.
+  admin_level_overrides     = yamldecode(file("${path.module}/data/users/admin_level.yaml"))
+  default_account_overrides = yamldecode(file("${path.module}/data/users/default_accounts.yaml"))
+  wckey_overrides           = yamldecode(file("${path.module}/data/users/wckeys.yaml"))
 
   # Flatten each account's user_associations into normalized association
   # tuples. An entry is either a bare string ("alice", no overrides) or an
@@ -77,11 +85,11 @@ locals {
   users = {
     for u in distinct([for m in local.memberships : m.user]) : u => {
       associations   = [for m in local.memberships : m if m.user == u]
-      admin_level    = try(local.overrides[u].admin_level, null)
-      default_wc_key = try(local.overrides[u].default_wc_key, null)
+      admin_level    = try(local.admin_level_overrides[u], null)
+      default_wc_key = try(local.wckey_overrides[u], null)
       # Login default account: explicit override, else the user's (only) account.
       default_account = try(
-        local.overrides[u].default_account,
+        local.default_account_overrides[u],
         [for m in local.memberships : m.account if m.user == u][0],
       )
     }

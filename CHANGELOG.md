@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `slurm_account` now refuses to delete the built-in `root` account. A plan
+  that would destroy a `slurm_account` named `root` — an explicit `tofu
+  destroy`, removing the resource from configuration, a `for_each` key
+  disappearing, or a rename (`name` forces replacement) — fails at `tofu
+  plan` time (via `ModifyPlan`) with a clear error explaining why, before any
+  request reaches `slurmrestd`. There is no valid Slurm workflow that deletes
+  just the root account while the cluster stays registered, so this is an
+  unconditional error, not a warning. Creating/updating a `slurm_account`
+  named `root` is unaffected. Covered by unit tests
+  (`account_protected_test.go`) and a live-cluster acceptance fixture
+  (`test/fixtures/protected-root-account/`).
+
 - **First-class `fairshare = "parent"` support.** Slurm's fairshare has a
   special "parent" mode in which an account/association inherits its parent
   account's fairshare weight instead of carrying its own; Slurm stores it as
@@ -36,6 +48,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     value in `tostring()`, so both quoted and bare-number YAML keep working.
     The literal number `2147483647` is rejected in config with a hint to use
     `"parent"` instead (it canonicalises to `"parent"` on read).
+
+- **`examples/big-cluster/data/users.yaml` split into `data/users/admin_level.yaml`,
+  `data/users/default_accounts.yaml`, and `data/users/wckeys.yaml`** — one file
+  per exception concern instead of one combined file, so each stays scannable
+  as the cluster grows (skimming "who's an admin?" no longer requires reading
+  past every multi-account user's default-account pin). A user needing more
+  than one exception gets an entry in more than one file. `generate.tf` and
+  `generate_import.py`'s `--layout big-cluster` writer updated to match
+  (verified byte-identical, as always); `examples/big-cluster/README.md`,
+  `tools/generate_import/README.md`, and `CLAUDE.md` updated throughout.
+  - **Migration**: rename `data/users.yaml` into the three new files, keyed by
+    which fields each user had set (`admin_level` → `admin_level.yaml`,
+    `default_account` → `default_accounts.yaml`, `default_wc_key` →
+    `wckeys.yaml`). No provider-level or resource-address changes — this only
+    affects the illustrative big-cluster example and the importer's generated
+    output.
+- Documented that the `Coordinator` role (Slurm's per-account admin list,
+  distinct from `slurm_user.admin_level`) is not supported by this provider —
+  `internal/client/account.go`'s `Coordinators` field is deserialized from
+  API responses but never exposed, read, or written by `slurm_account`. Noted
+  in `docs/resources/account.md` (and its template), `examples/big-cluster/README.md`,
+  and as a detailed future-work entry in `CLAUDE.md`'s "What's Left" section.
 
 ## [0.3.0] - 2026-07-06
 

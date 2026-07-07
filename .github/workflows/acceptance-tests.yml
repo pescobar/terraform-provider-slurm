@@ -577,6 +577,63 @@ jobs:
           fi
           echo "PASS: system-QOS warning fired as expected"
 
+      - name: Run protected-root-account fixture (plan-time, no apply/destroy)
+        env:
+          TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
+          TF_VAR_slurm_token: ${{ env.SLURM_JWT_TOKEN }}
+          TF_VAR_slurm_api_version: ${{ matrix.api_version }}
+        run: |
+          cd test/fixtures/protected-root-account/
+          # 1. Import is read-only; every optional attribute is left unset in
+          #    main.tf (null-preservation), so this must be a clean plan.
+          tofu import slurm_account.root_protected root
+          output=$(tofu plan -no-color 2>&1)
+          echo "$output"
+          if ! echo "$output" | grep -qF "No changes."; then
+            echo "FAIL: expected a clean plan after import, found a diff"
+            exit 1
+          fi
+
+          # 2. Outright destroy: `tofu plan -destroy` simulates what `tofu
+          #    destroy` would plan, without editing config or touching the
+          #    cluster -- plan is always read-only.
+          set +e
+          output=$(tofu plan -destroy -no-color 2>&1)
+          exit_code=$?
+          set -e
+          echo "$output"
+          if [ "$exit_code" -eq 0 ]; then
+            echo "FAIL: expected the destroy plan to fail, got exit 0"
+            exit 1
+          fi
+          if ! echo "$output" | grep -qF 'Refusing to delete protected account "root"'; then
+            echo "FAIL: expected the protected-account error, did not find it"
+            exit 1
+          fi
+
+          # 3. Rename-triggered replace: `name` has RequiresReplace(), so
+          #    changing it plans a destroy of the old ("root") instance plus
+          #    a create of a new one -- just as much a deletion of the
+          #    protected account as step 2, even though the planned value
+          #    isn't null this time.
+          sed -i 's/name = "root"/name = "root_renamed"/' main.tf
+          set +e
+          output=$(tofu plan -no-color 2>&1)
+          exit_code=$?
+          set -e
+          git checkout -- main.tf
+          echo "$output"
+          if [ "$exit_code" -eq 0 ]; then
+            echo "FAIL: expected the rename-triggered replace plan to fail, got exit 0"
+            exit 1
+          fi
+          if ! echo "$output" | grep -qF 'Refusing to delete protected account "root"'; then
+            echo "FAIL: expected the protected-account error on rename, did not find it"
+            exit 1
+          fi
+
+          echo "PASS: root account deletion is blocked at plan time (destroy and rename)"
+
       - name: Run QOS acceptance tests (all attributes + import verification)
         env:
           TF_CLI_CONFIG_FILE: /tmp/dev.tofurc
@@ -691,7 +748,7 @@ jobs:
           cd examples/big-cluster/
 
           # This is the account-centric, data-driven layout for large
-          # clusters: data/accounts/*.yaml + data/users.yaml, inverted by
+          # clusters: data/accounts/*.yaml + data/users/*.yaml, inverted by
           # generate.tf into slurm_account/slurm_user resources. Exercises
           # every account-level and per-member override field the README
           # documents (allowed_qos, TRES limits at both scopes, job-count and
@@ -748,7 +805,9 @@ jobs:
           test -f /tmp/gen-bigcluster/main.tf
           test -f /tmp/gen-bigcluster/qos.tf
           test -f /tmp/gen-bigcluster/generate.tf
-          test -f /tmp/gen-bigcluster/data/users.yaml
+          test -f /tmp/gen-bigcluster/data/users/admin_level.yaml
+          test -f /tmp/gen-bigcluster/data/users/default_accounts.yaml
+          test -f /tmp/gen-bigcluster/data/users/wckeys.yaml
           test -n "$(ls /tmp/gen-bigcluster/data/accounts/*.yaml 2>/dev/null)"
 
           echo "--- Verifying --layout flat: import -> reconcile -> clean plan ---"

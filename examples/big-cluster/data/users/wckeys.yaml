@@ -1,0 +1,6 @@
+# Exceptions only: users with a pinned default_wc_key. See the
+# `default_wc_key` caveat in README.md before adding an entry here -- Slurm
+# must already have the WCKey registered to the user, and the provider can
+# never read this value back to confirm it or detect drift.
+
+{}

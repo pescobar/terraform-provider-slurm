@@ -58,6 +58,26 @@ tofu apply
 tofu plan -detailed-exitcode
 ```
 
+### The built-in `root` account can never be deleted
+
+`root` is auto-created the moment a cluster is registered with Slurm
+(`sacctmgr add cluster`), and every other account depends on it directly or
+via a chain of `parent_account`. There is no valid Slurm administration
+workflow that deletes just the root account while the cluster stays
+registered, so this provider refuses to do it: any plan that would destroy
+a `slurm_account` named `root` — an explicit `tofu destroy`, removing the
+resource from configuration, a `for_each` key disappearing, or even a
+rename (`name` forces replacement) — fails at `tofu plan` time with
+`Error: Refusing to delete protected account "root"`, before any request
+reaches `slurmrestd`.
+
+Creating and updating a `slurm_account` named `root` (to manage its own
+`fairshare`, `default_qos`, `allowed_qos`, etc.) works normally — only
+deletion is blocked. To decommission an entire cluster from the accounting
+database, delete the `slurm_cluster` resource instead. To stop managing
+`root` with Terraform without deleting it in Slurm, remove it from state
+with `tofu state rm` rather than removing it from your configuration.
+
 ### `parent_account` drift is not detected once set
 
 `parent_account` has a stricter null-preservation rule than the other Optional
@@ -71,3 +91,16 @@ apply that silently leaves it there) is **not detected as drift** — `tofu plan
 will keep reporting no changes even though Slurm no longer matches your
 configuration. Verified against a live cluster. There is currently no
 workaround short of periodically checking `sacctmgr show account` directly.
+
+### The `Coordinator` role is not supported
+
+Slurm's [user permissions model](https://slurm.schedmd.com/user_permissions.html)
+has a second admin-like role beyond `slurm_user`'s `admin_level` (None/
+Operator/Administrator): **Coordinator**, a per-account list of usernames
+(`sacctmgr add coordinator account=<account> names=<user>`) granting limited
+admin rights scoped to that one account and its sub-accounts. This provider
+does not manage it — there is no `coordinators` attribute on `slurm_account`,
+so it cannot be set, read, or detected as drift through Terraform. Manage
+coordinators directly with `sacctmgr` outside this provider if you need them.
+See the "Coordinator role" entry in the project's `CLAUDE.md` for what adding
+real support would require.
