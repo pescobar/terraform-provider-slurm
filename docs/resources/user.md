@@ -111,7 +111,7 @@ Optional:
 
 - `allowed_qos` (List of String) List of QOS names granted to this specific user's association. This is the same Slurm concept as slurm_account.allowed_qos (an association's QOS list), scoped to this user+account association instead of the account's own.
 - `default_qos` (String) Default QOS for this association.
-- `fairshare` (String) Fairshare value for this association: a non-negative integer weight (default: 1), or the keyword `"parent"` to inherit the parent account's fairshare.
+- `fairshare` (String) Fairshare value for this association: a non-negative integer weight (default: 1), or the keyword `"parent"` to inherit the parent account's fairshare. Removing this attribute stops managing it — it does NOT reset the value in Slurm; set it explicitly (e.g. `"1"`) to reset.
 - `grp_jobs` (Number) Maximum running jobs across all users in this association group (GrpJobs).
 - `grp_jobs_accrue` (Number) Maximum pending jobs accruing priority across the group (GrpJobsAccrue).
 - `grp_submit_jobs` (Number) Maximum submitted jobs across the group (GrpSubmitJobs).
