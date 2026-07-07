@@ -49,6 +49,17 @@ locals {
   #     not overridden.
   #
   # See "Account-level fields vs association-only fields" in README.md.
+  #
+  # An account may also declare an optional `association_defaults:` block with
+  # the same `account_overrides:`/`association:` sub-maps. Any field a member
+  # does NOT set falls back to that account default before falling back to
+  # null. This removes the need to repeat, say, `fairshare: parent` on every
+  # single member of an account -- set it once under association_defaults and
+  # list the members as bare names; a member can still override it by setting
+  # the field on its own entry. See "Account-wide association defaults" in
+  # README.md. The `try(m.X, acct.association_defaults.….X, null)` chain below
+  # encodes exactly that precedence: per-member value, then account default,
+  # then null.
   memberships = flatten([
     for acct_key, acct in local.accounts : [
       for m in acct.user_associations : {
@@ -57,26 +68,26 @@ locals {
         # account_overrides.*
         # fairshare is a string ("parent" or an integer weight); tostring()
         # accepts either a quoted or a bare-number value in the YAML.
-        fairshare             = try(tostring(m.account_overrides.fairshare), null)
-        default_qos           = try(m.account_overrides.default_qos, null)
-        allowed_qos           = try(m.account_overrides.allowed_qos, null)
-        max_jobs              = try(m.account_overrides.max_jobs, null)
-        max_tres_per_job      = try(m.account_overrides.max_tres_per_job, null)
-        max_tres_per_node     = try(m.account_overrides.max_tres_per_node, null)
-        max_tres_mins_per_job = try(m.account_overrides.max_tres_mins_per_job, null)
-        grp_tres              = try(m.account_overrides.grp_tres, null)
-        grp_tres_mins         = try(m.account_overrides.grp_tres_mins, null)
-        grp_tres_run_mins     = try(m.account_overrides.grp_tres_run_mins, null)
+        fairshare             = try(tostring(m.account_overrides.fairshare), tostring(acct.association_defaults.account_overrides.fairshare), null)
+        default_qos           = try(m.account_overrides.default_qos, acct.association_defaults.account_overrides.default_qos, null)
+        allowed_qos           = try(m.account_overrides.allowed_qos, acct.association_defaults.account_overrides.allowed_qos, null)
+        max_jobs              = try(m.account_overrides.max_jobs, acct.association_defaults.account_overrides.max_jobs, null)
+        max_tres_per_job      = try(m.account_overrides.max_tres_per_job, acct.association_defaults.account_overrides.max_tres_per_job, null)
+        max_tres_per_node     = try(m.account_overrides.max_tres_per_node, acct.association_defaults.account_overrides.max_tres_per_node, null)
+        max_tres_mins_per_job = try(m.account_overrides.max_tres_mins_per_job, acct.association_defaults.account_overrides.max_tres_mins_per_job, null)
+        grp_tres              = try(m.account_overrides.grp_tres, acct.association_defaults.account_overrides.grp_tres, null)
+        grp_tres_mins         = try(m.account_overrides.grp_tres_mins, acct.association_defaults.account_overrides.grp_tres_mins, null)
+        grp_tres_run_mins     = try(m.account_overrides.grp_tres_run_mins, acct.association_defaults.account_overrides.grp_tres_run_mins, null)
         # association.*
-        partition       = try(m.association.partition, null)
-        priority        = try(m.association.priority, null)
-        max_jobs_accrue = try(m.association.max_jobs_accrue, null)
-        max_submit_jobs = try(m.association.max_submit_jobs, null)
-        max_wall_pj     = try(m.association.max_wall_pj, null)
-        grp_jobs        = try(m.association.grp_jobs, null)
-        grp_jobs_accrue = try(m.association.grp_jobs_accrue, null)
-        grp_submit_jobs = try(m.association.grp_submit_jobs, null)
-        grp_wall        = try(m.association.grp_wall, null)
+        partition       = try(m.association.partition, acct.association_defaults.association.partition, null)
+        priority        = try(m.association.priority, acct.association_defaults.association.priority, null)
+        max_jobs_accrue = try(m.association.max_jobs_accrue, acct.association_defaults.association.max_jobs_accrue, null)
+        max_submit_jobs = try(m.association.max_submit_jobs, acct.association_defaults.association.max_submit_jobs, null)
+        max_wall_pj     = try(m.association.max_wall_pj, acct.association_defaults.association.max_wall_pj, null)
+        grp_jobs        = try(m.association.grp_jobs, acct.association_defaults.association.grp_jobs, null)
+        grp_jobs_accrue = try(m.association.grp_jobs_accrue, acct.association_defaults.association.grp_jobs_accrue, null)
+        grp_submit_jobs = try(m.association.grp_submit_jobs, acct.association_defaults.association.grp_submit_jobs, null)
+        grp_wall        = try(m.association.grp_wall, acct.association_defaults.association.grp_wall, null)
       }
     ]
   ])

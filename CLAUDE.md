@@ -301,12 +301,19 @@ in the YAML itself, not just in prose (see "Two kinds of per-user data" in
   (partition, priority, job-count/wall-clock limits); there's nothing to
   inherit, these are declared, not overridden.
 
-`try(m.account_overrides.fairshare, null)`-style lookups read each field, so
-a bare-string entry (which has neither sub-map) safely falls through to
-`null` for every field. A `?:` conditional is avoided because Terraform
-won't unify `string` with `null`. Migrating a flat config to this layout
-changes resource addresses, so `moved {}` blocks (or `tofu state mv`) are
-required to avoid destroy/recreate of live Slurm entities.
+`try(m.account_overrides.fairshare, acct.association_defaults.account_overrides.fairshare, null)`-style
+lookups read each field with a three-step precedence: the member's own value,
+then the account's optional `association_defaults` block (same
+`account_overrides`/`association` sub-maps, applied to every member that
+doesn't set the field — lets a value shared by all members, typically
+`fairshare: parent`, be written once instead of per-member), then `null`. A
+bare-string entry (neither sub-map) safely falls through to the account
+default or `null`. A `?:` conditional is avoided because Terraform won't unify
+`string` with `null`. `generate_import.py` emits `association_defaults` by
+hoisting any field carried identically by *every* member of an account (only
+unanimous fields, so hoisting can't change effective config). Migrating a flat
+config to this layout changes resource addresses, so `moved {}` blocks (or
+`tofu state mv`) are required to avoid destroy/recreate of live Slurm entities.
 
 To import an existing cluster directly into this layout, run
 `tools/generate_import/generate_import.py --layout big-cluster` — it emits the

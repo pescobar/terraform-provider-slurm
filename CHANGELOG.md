@@ -77,6 +77,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   metacharacters — leaving ordinary usernames and account names (`alice`,
   `web-admin`) unquoted for readability. Purely a formatting change to
   generated output; the parsed values are identical (verified round-trip).
+- **`examples/big-cluster/`: account-wide `association_defaults`.** An account
+  YAML may now declare an optional `association_defaults:` block (same
+  `account_overrides:`/`association:` sub-maps as a member) whose values apply
+  to every member that doesn't set the field itself — so a value shared by all
+  members, typically `fairshare: parent`, is written once instead of repeated
+  on every user. Per-field precedence is member value → account default →
+  the field's normal omitted-resolution. `generate.tf` encodes the fallback;
+  `generate_import.py` now **emits** this form, hoisting any field carried
+  identically by every member of an account into `association_defaults` (only
+  ever-unanimous fields, so hoisting can't change anyone's effective config)
+  and listing those members as bare names. `teaching.yaml` demonstrates it
+  (members inherit `parent`; `dave` overrides with his own `fairshare: 15`);
+  documented under "Account-wide association defaults" in
+  `examples/big-cluster/README.md`.
 
 ### Documentation
 
