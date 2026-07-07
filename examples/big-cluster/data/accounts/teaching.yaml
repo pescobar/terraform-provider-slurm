@@ -11,10 +11,13 @@ grp_tres:
   - type: cpu
     count: 200
 # Account-wide association defaults: every member inherits these unless its own
-# entry overrides the field. Declared once here instead of repeated on every
-# member -- handy when, e.g., all members should draw on the account's own
-# fairshare weight (`parent`) rather than carrying their own. A member can
-# still override any field (dave sets his own `fairshare: 15` below).
+# entry overrides the field. Declared ONCE here instead of repeated on every
+# member -- the payoff grows with headcount: the six students below are bare
+# names, yet all draw on the account's own fairshare weight (`parent`) rather
+# than each carrying their own. On a real teaching account with hundreds of
+# students this replaces hundreds of identical `fairshare: parent` lines with
+# this single block. A member can still override any field (the TA, dave, sets
+# his own `fairshare: 15` below).
 association_defaults:
   account_overrides:
     fairshare: parent
@@ -34,5 +37,13 @@ user_associations:
       priority: 20
       max_wall_pj: 240
       grp_wall: 2000
+  # Students: bare names, no per-user config at all. Each one still gets
+  # fairshare: parent from association_defaults above -- that's the whole point,
+  # no `fairshare: parent` repeated on any of them.
   - carol
   - john
+  - erin
+  - frank
+  - grace
+  - heidi
+  - ivan

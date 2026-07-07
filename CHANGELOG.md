@@ -104,6 +104,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a "Removing an attribute from config does not reset it" section to
   `docs/resources/account.md` (and its `templates/` source) and a note on the
   `fairshare` attribute description in both `slurm_account` and `slurm_user`.
+- **Made the `association_defaults` demonstration in `examples/big-cluster/`
+  more representative.** Expanded `teaching.yaml` from 3 members to a TA plus
+  six bare students, so the "many members inherit one default, written once"
+  win (all students get `fairshare: parent` with no per-member repetition) is
+  obvious at a glance rather than incidental.
 
 ## [0.3.0] - 2026-07-06
 
