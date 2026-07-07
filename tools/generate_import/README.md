@@ -64,7 +64,9 @@ the user-centric resources the provider needs (see
 | `qos.tf` | One `slurm_qos` resource per QOS (plain HCL, as in flat) |
 | `generate.tf` | `locals` + `for_each` that build the resources from `data/` |
 | `data/accounts/<name>.yaml` | One file per account: metadata + `user_associations` list |
-| `data/users.yaml` | Exceptions only: admins and multi-account default picks |
+| `data/users/admin_level.yaml` | Exceptions only: users with a non-default `admin_level` |
+| `data/users/default_accounts.yaml` | Exceptions only: multi-account users' login default pin |
+| `data/users/wckeys.yaml` | Exceptions only: users with a pinned `default_wc_key` |
 | `imports.tf` | `import {}` blocks targeting the `for_each` addresses (`slurm_account.this["…"]`) |
 
 Notes specific to `big-cluster`:
@@ -78,9 +80,14 @@ Notes specific to `big-cluster`:
   fields with no account-level equivalent (partition, priority, job-count
   and wall-clock limits — declared, not overridden). See "Two kinds of
   per-user data" in `examples/big-cluster/README.md`.
-- **`data/users.yaml` stays tiny.** A user is listed only if they have an
-  `admin_level` or belong to more than one account (to pin their login
-  `default_account`). Single-account users are derived automatically.
+- **`data/users/` stays tiny, split one file per concern** (`admin_level.yaml`,
+  `default_accounts.yaml`, `wckeys.yaml`) rather than one combined
+  `data/users.yaml`, so each stays scannable as the cluster grows. A user is
+  listed in a given file only if they have that specific exception (a
+  non-default `admin_level`, membership in more than one account, or a
+  pinned `default_wc_key`); a user needing more than one exception gets an
+  entry in more than one file. Single-account users with none of these are
+  derived automatically and appear in none of the three files.
 - **Filenames are sanitized**, but the real Slurm account name is preserved in
   each file's `name:` key, so accounts whose names contain `/`, spaces, etc.
   are handled correctly.
@@ -246,7 +253,8 @@ re-running.
   `user_associations` list, so a user with no associations has nowhere to
   live and is omitted (reported as a warning listing the skipped names). In
   practice such users can't run jobs, so this is usually harmless. If you
-  must manage association-less users, they would need to be added to
-  `data/users.yaml` and `generate.tf` extended to create association-less
-  `slurm_user` resources from those entries — this is not done
-  automatically. The `flat` layout is unaffected (it emits every user).
+  must manage association-less users, they would need to be added to one of
+  the `data/users/*.yaml` files (or a new one) and `generate.tf` extended to
+  create association-less `slurm_user` resources from those entries — this
+  is not done automatically. The `flat` layout is unaffected (it emits every
+  user).

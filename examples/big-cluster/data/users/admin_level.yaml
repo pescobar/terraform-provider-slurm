@@ -1,0 +1,11 @@
+# Exceptions only: users with a non-default admin_level (Operator or
+# Administrator). Everyone else is None and is NOT listed here.
+#
+# See https://slurm.schedmd.com/user_permissions.html for what each level
+# grants. The provider only supports admin_level (None/Operator/Administrator)
+# today -- the separate, per-account "Coordinator" role documented on that
+# page is NOT supported by this provider yet. See the "Coordinator role is
+# not supported" note in examples/big-cluster/README.md and the matching
+# entry in CLAUDE.md before assuming you can manage it here.
+
+carol: Administrator

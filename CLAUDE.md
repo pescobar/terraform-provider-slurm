@@ -245,7 +245,7 @@ terraform-provider-slurm/
 │   │   ├── qos.tf
 │   │   └── data/             #     account-centric YAML the sysadmins edit
 │   │       ├── accounts/*.yaml
-│   │       └── users.yaml
+│   │       └── users/{admin_level,default_accounts,wckeys}.yaml
 │   ├── provider/             #   registry-doc fragments (tfplugindocs reads
 │   ├── resources/            #   these paths — do not move them)
 │   └── data-sources/
@@ -280,8 +280,10 @@ For clusters with hundreds of accounts and thousands of users, a flat
 `users.tf` is unmaintainable. The `big-cluster` example demonstrates a
 data-driven alternative: sysadmins edit **account-centric** YAML
 (`data/accounts/<name>.yaml` holds account metadata + a `user_associations`
-list; `data/users.yaml` holds only exceptions — admins and multi-account
-default picks), and `generate.tf` **inverts** that into the **user-centric**
+list; `data/users/` holds only exceptions, split one file per concern —
+`admin_level.yaml`, `default_accounts.yaml`, `wckeys.yaml` — rather than one
+combined `data/users.yaml`, so each stays scannable as the cluster grows),
+and `generate.tf` **inverts** that into the **user-centric**
 `slurm_user`/`slurm_account` resources the provider needs (a `slurm_user`
 carries all of its associations, so a multi-account user cannot be split across
 per-account files in raw HCL — hence the inversion).
@@ -333,3 +335,11 @@ template as the generator's output.
 - ~~CI with GitHub Actions~~ — done (unit-tests, lint, docs-check, acceptance matrix, release).
 - Auth improvements (JWT key file instead of short-lived tokens)
 - ~~Handle the `normal` QOS corner case~~ — done. `slurm_qos` `ValidateConfig` now emits a Terraform warning when a managed QOS name matches an entry in `systemQOSNames` (currently just `normal`). The list is package-level so additional system QOS names can be added without changing the validator. Covered by `TestSystemQOSWarning_*` unit tests and the `test/fixtures/system-qos-warning/` plan-only acceptance fixture.
+- **Coordinator role is not supported — notes for implementing it if ever needed.** Slurm's [user permissions model](https://slurm.schedmd.com/user_permissions.html) has a second admin-like role beyond `slurm_user.admin_level` (None/Operator/Administrator): **Coordinator**, a per-**account** list of usernames (`sacctmgr add coordinator account=<account> names=<user>`) granting limited admin rights scoped to that one account and its sub-accounts — structurally similar to `user_associations` (a per-account list of users), not to `admin_level` (a single cluster-wide value on the user). Currently `internal/client/account.go`'s `Account` struct has a dead `Coordinators []string` field (`json:"coordinators,omitempty"`) used only to deserialize whatever `GET /account/{name}` happens to return — nothing in `internal/resources/account.go` reads it into schema, writes it, or diffs it, so there is no `slurm_account.coordinators` attribute today. To implement real support:
+  - **First, verify against a live cluster** (same discipline as every other entry in this file) how Slurm's REST API actually manages coordinators before writing any Go: does POSTing to `/accounts/` with a `coordinators` list in the body upsert-replace the full list (matching this API's established "everything is POST upsert" pattern for every other field), or does slurmrestd expose/require a dedicated add/remove mechanism? Don't assume the upsert pattern carries over without checking — this hasn't been tested.
+  - Add a `coordinators` (list of string) **Optional** attribute to `slurm_account`'s schema, following the same conventions as `allowed_qos`.
+  - `Create`/`Update` need to set the list; if the API turns out to be additive/subtractive rather than a full-list upsert, `Update` needs old-vs-new diffing logic analogous to `user_association_diff.go` (pure, independently unit-tested functions), not just "send the new list."
+  - `Read` needs to populate `state.Coordinators` from the already-deserialized `Account.Coordinators` field. Check empirically whether Slurm ever returns a non-empty default coordinators list that isn't explicitly configured (the way `fairshare` defaults to `1`) — if so this needs the same Optional-only null-preservation pattern used elsewhere in this resource; if coordinators behave like `grp_tres` (no implicit default), it may not.
+  - Decide whether coordinator usernames need to reference existing `slurm_user` resources (a `depends_on` / ordering concern, same class of issue as the `parent_account` race documented above) and whether removing the account cleans up its coordinator list automatically or needs explicit handling in `Delete`.
+  - Once implemented at the provider level, expose it in `examples/big-cluster/` as a new account-level YAML key (e.g. `coordinators: [alice]` in `data/accounts/<name>.yaml`, parallel to `user_associations`) and wire it through `generate.tf` and `tools/generate_import/generate_import.py`. It does **not** belong in `data/users/admin_level.yaml` — that file is for the structurally different, per-user `admin_level`, not a per-account role.
+  - Add unit tests for any diff logic plus a live-cluster acceptance-test fixture verifying create/update/delete, following the same "verified against a live cluster" standard as every other entry in this document.

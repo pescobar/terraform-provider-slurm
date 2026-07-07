@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -19,7 +20,47 @@ import (
 var (
 	_ resource.Resource                = &accountResource{}
 	_ resource.ResourceWithImportState = &accountResource{}
+	_ resource.ResourceWithModifyPlan  = &accountResource{}
 )
+
+// protectedAccountNames lists accounts this provider must never delete.
+// "root" is auto-created the moment a cluster is registered (`sacctmgr add
+// cluster`), and every other account depends on it directly or via a chain
+// of parent_account -- there is no supported Slurm workflow that deletes
+// just the root account while the cluster stays registered. Decommissioning
+// an entire cluster from the accounting database is modeled by this
+// provider as deleting the slurm_cluster resource, not an account named
+// "root". Unlike systemQOSNames (see qos.go), which only warns because
+// deleting "normal" at least has a plausible (if buggy) rationale, there is
+// no valid scenario this would block, so it's an unconditional hard error
+// rather than a warning.
+var protectedAccountNames = []string{"root"}
+
+// protectedAccountDeleteError returns a blocking error for deleting a
+// protected account name, used by both ModifyPlan (so `tofu plan` fails
+// before any API call) and Delete (a backstop in case ModifyPlan is ever
+// bypassed). ok=false means the name is not protected and deletion may
+// proceed normally.
+func protectedAccountDeleteError(name string) (summary string, detail string, ok bool) {
+	for _, n := range protectedAccountNames {
+		if name == n {
+			return fmt.Sprintf("Refusing to delete protected account %q", name),
+				fmt.Sprintf(
+					"%q is a Slurm built-in account that exists for as long as the "+
+						"cluster is registered; every other account depends on it via "+
+						"parent_account. There is no valid Slurm administration workflow "+
+						"that deletes it while the cluster stays registered — to "+
+						"decommission the whole cluster from the accounting database, "+
+						"delete the slurm_cluster resource instead. If you need to stop "+
+						"managing this account with Terraform without deleting it in "+
+						"Slurm, remove it from state with `tofu state rm` instead of "+
+						"removing it from your configuration.",
+					name,
+				), true
+		}
+	}
+	return "", "", false
+}
 
 type accountResource struct {
 	client *client.Client
@@ -327,11 +368,61 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 	resp.Diagnostics.Append(diags...)
 }
 
+// ModifyPlan blocks a plan that would delete a protected account (see
+// protectedAccountNames) at `tofu plan` time, before Delete ever runs.
+// It catches two ways a plan can call for a protected account's deletion:
+//   - an outright destroy: the resource is being removed from config, a
+//     for_each key it was keyed by disappeared, or a full `tofu destroy` —
+//     in all of these the planned new value is null.
+//   - a rename-triggered replace: `name` has RequiresReplace(), so changing
+//     a protected account's `name` in config plans a destroy of the old,
+//     protected instance followed by a create of a new one under the new
+//     name — just as much a deletion of the protected account as a
+//     straight destroy, even though the planned value here isn't null.
+func (r *accountResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// No prior state means this is a brand-new resource — nothing to protect.
+	if req.State.Raw.IsNull() {
+		return
+	}
+
+	var state accountResourceModel
+	diags := req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	summary, detail, ok := protectedAccountDeleteError(state.Name.ValueString())
+	if !ok {
+		return
+	}
+
+	if req.Plan.Raw.IsNull() {
+		resp.Diagnostics.AddError(summary, detail)
+		return
+	}
+
+	var plan accountResourceModel
+	diags = req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !plan.Name.IsUnknown() && plan.Name.ValueString() != state.Name.ValueString() {
+		resp.Diagnostics.AddError(summary, detail)
+	}
+}
+
 func (r *accountResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state accountResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if summary, detail, ok := protectedAccountDeleteError(state.Name.ValueString()); ok {
+		resp.Diagnostics.AddError(summary, detail)
 		return
 	}
 

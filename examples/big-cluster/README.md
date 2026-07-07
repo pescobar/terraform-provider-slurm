@@ -36,7 +36,10 @@ big-cluster/
     │   ├── teaching.yaml
     │   ├── admin.yaml
     │   └── shared.yaml
-    └── users.yaml            # EXCEPTIONS ONLY (admins + multi-account defaults)
+    └── users/                       # EXCEPTIONS ONLY, one file per concern
+        ├── admin_level.yaml         # non-default admin_level (Operator/Administrator)
+        ├── default_accounts.yaml    # multi-account users' login default pin
+        └── wckeys.yaml              # pinned default_wc_key
 ```
 
 ## Account file format (`data/accounts/<name>.yaml`)
@@ -320,7 +323,7 @@ restating a shared type.
 The two tables above are the *complete* set of fields these YAML files can
 carry. If a field isn't in one of them, that's not a gap in this example —
 it's not part of the schema, or it's deliberately kept out of `data/`.
-Concretely, out of scope for `data/accounts/*.yaml` and `data/users.yaml`:
+Concretely, out of scope for `data/accounts/*.yaml` and `data/users/*.yaml`:
 
 - **QOS definitions themselves** — `priority`, `max_wall_pj`, `flags`,
   `preempt_list`, `preempt_mode`, and a QOS's own TRES limits belong to a
@@ -345,11 +348,25 @@ Concretely, out of scope for `data/accounts/*.yaml` and `data/users.yaml`:
   association belongs to is determined entirely by *which account file's
   `user_associations` list the entry lives in* — there is no `account:` key
   to write under `account_overrides` or `association`.
-- **`default_wc_key`** lives only in `data/users.yaml`, once per user,
-  cluster-wide — it is not part of `account_overrides` or `association`.
-  The provider has no per-association WCKey to expose (Slurm's WCKey is a
-  user-level default, not an association attribute), so there's nothing to
-  put in a per-account file for it.
+- **`default_wc_key`** lives only in `data/users/wckeys.yaml`, once per
+  user, cluster-wide — it is not part of `account_overrides` or
+  `association`. The provider has no per-association WCKey to expose
+  (Slurm's WCKey is a user-level default, not an association attribute), so
+  there's nothing to put in a per-account file for it.
+- **The `Coordinator` role** — Slurm's
+  [user permissions model](https://slurm.schedmd.com/user_permissions.html)
+  has a second admin-like role beyond `admin_level` (None/Operator/
+  Administrator): a per-**account** list of coordinator usernames
+  (`sacctmgr add coordinator account=<account> names=<user>`), granting
+  limited admin rights scoped to that one account and its sub-accounts.
+  **This provider does not support it** — `internal/client/account.go` has a
+  dead `Coordinators []string` field used only to deserialize what
+  slurmrestd returns for an account, but no `slurm_account` schema
+  attribute, Create/Update logic, or diffing exposes or manages it. There is
+  therefore nowhere in `data/accounts/*.yaml` or `data/users/*.yaml` to
+  declare a coordinator today. See the "Coordinator role" entry in
+  `CLAUDE.md`'s "What's Left" section for what adding real support would
+  require.
 - **`id`** is computed on every resource (it mirrors `name`) and is never a
   config input, here or in any other layout.
 - **`parent_account`** *is* in the account-level table above — it exists on
@@ -380,29 +397,43 @@ every account name into a safe filename stem and always writes the real name
 into `name:`, so a hand-edited file only needs to add `name:` when you
 create a new account whose name isn't already filename-safe.
 
-## `data/users.yaml` — exceptions only
+## `data/users/` — exceptions only, one file per concern
 
-This file stays tiny. A user goes here **only** if they:
+Three small files, each covering exactly one exception — not one combined
+`data/users.yaml`. Splitting them keeps each one scannable as the cluster
+grows: skimming "who's an admin?" in `admin_level.yaml` shouldn't require
+reading past every multi-account user's default-account pin in
+`default_accounts.yaml`. A user needing more than one of these (like carol
+below) simply gets an entry in more than one file — that's expected, not
+duplication to avoid.
 
-- belong to more than one account (pick their login `default_account`), or
-- need an `admin_level`, or
-- need a `default_wc_key`.
-
-Single-account users with none of these are **not** listed — their default
-account is derived from the one account file that lists them.
+**`data/users/admin_level.yaml`** — users with a non-default `admin_level`
+(`Operator` or `Administrator`; `None` is the default and is never listed).
+See [Slurm's user permissions
+model](https://slurm.schedmd.com/user_permissions.html) for what each level
+grants — and note that page's separate `Coordinator` role is **not**
+supported by this provider (see "What this layout cannot express" above).
 
 ```yaml
-john:
-  default_account: lab_physics   # john is in 6 accounts; this is his login default
-carol:
-  admin_level: Administrator
-  default_account: admin
-# dave: not a real entry (he needs neither multi-account default nor
-# admin_level, so he isn't listed at all in the actual data/users.yaml) --
-# shown here only to illustrate default_wc_key syntax for a single-account
-# user who did need one pinned:
-dave:
-  default_wc_key: genomics       # dave is single-account but needs a wckey pinned
+carol: Administrator
+```
+
+**`data/users/default_accounts.yaml`** — users who belong to more than one
+account, pinning which one is their login `default_account`. Single-account
+users are **not** listed here — their default account is derived from the
+one account file that lists them.
+
+```yaml
+john: lab_physics   # john is in 6 accounts; this is his login default
+carol: admin
+```
+
+**`data/users/wckeys.yaml`** — users with a pinned `default_wc_key`. Empty
+(`{}`) in this example; shown here only to illustrate the syntax for a
+single-account user who needed one pinned:
+
+```yaml
+dave: genomics
 ```
 
 > **`default_wc_key` caveat**: Slurm requires the WCKey to already be
@@ -419,8 +450,9 @@ dave:
 `john` is a member of **6 accounts** (1 primary + 5 extra): `lab_physics`
 (primary), `lab_bio`, `lab_chem`, `teaching`, `admin`, `shared`. He appears as
 one entry in each of those 6 accounts' `user_associations`, plus one line in
-`users.yaml` pinning his default. In `admin.yaml` his entry uses
-`account_overrides` to get a different QOS there.
+`data/users/default_accounts.yaml` pinning his default. In
+`data/accounts/admin.yaml` his entry uses `account_overrides` to get a
+different QOS there.
 
 ## Daily-ops cheat sheet
 
@@ -431,13 +463,13 @@ one entry in each of those 6 accounts' `user_associations`, plus one line in
 | Add a user to an account | Add `- <user>` under that account's `user_associations:` |
 | Remove a user from an account | Delete their entry from that account's `user_associations:` |
 | New single-account user | Add them to the one account file — nothing else |
-| Make a user multi-account | Add them to extra account files + one line in `users.yaml` for their default |
+| Make a user multi-account | Add them to extra account files + one line in `data/users/default_accounts.yaml` for their default |
 | Give a user a per-account QOS | Use the object form, under `account_overrides`, in that account file |
 | Give a user a per-account TRES/job-count/wall-clock limit | Use the object form; `account_overrides` for TRES/job/QOS fields, `association` for partition/priority/job-count/wall-clock fields — see "Supported per-user fields" above |
 | Set an account-wide TRES/job limit | Add the field to that account's top-level YAML; see "Supported account-level fields" above |
 | Scope a user's association to a partition | Use the object form's `association: { partition: ... }` — **not** on a user's own default account, see Notes |
-| Grant admin rights | Add `admin_level` to their `users.yaml` entry |
-| Pin a workload characterization key | Add `default_wc_key` to their `users.yaml` entry |
+| Grant admin rights (`Operator`/`Administrator`) | Add an entry to `data/users/admin_level.yaml` |
+| Pin a workload characterization key | Add an entry to `data/users/wckeys.yaml` |
 
 ## Verifying without applying
 
@@ -520,9 +552,10 @@ inversion stage by stage:
   account's `user_associations` list. The importer (`--layout big-cluster`)
   skips such users and warns; single-user edits should keep this in mind.
   Users with no associations can't run jobs, so this is usually a non-issue.
-  If you genuinely need to manage one, add it to `data/users.yaml` and
-  extend `generate.tf` to create association-less `slurm_user` resources
-  from those entries (not wired up by default).
+  If you genuinely need to manage one, add it to one of the
+  `data/users/*.yaml` files (or a new one of your own) and extend
+  `generate.tf` to create association-less `slurm_user` resources from
+  those entries (not wired up by default).
 - **`parent_account` is not ordering-safe across accounts in this layout.**
   All accounts share one `for_each`, so OpenTofu has no dependency
   information between a child account and its parent unless the parent is
