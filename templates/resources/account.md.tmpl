@@ -34,7 +34,7 @@ tofu import slurm_account.physics physics
 Every attribute on `slurm_account` besides `id` and `name` is **Optional-only**
 (no `Computed`). The provider only writes such a field into state when it is
 already non-null in prior state. This prevents Slurm's inherited defaults —
-such as `fairshare = 1` or a QOS list inherited from the parent account — from
+such as `fairshare = "1"` or a QOS list inherited from the parent account — from
 appearing as drift after a fresh import.
 
 After `tofu import`, every Optional field (`fairshare`, `default_qos`,

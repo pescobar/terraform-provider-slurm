@@ -49,6 +49,19 @@ provider "slurm" {
 - Provider uses terraform-plugin-framework (not SDKv2).
 - Binary must be named `terraform-provider-slurm` (required by both Terraform and OpenTofu).
 - For dev testing, use `~/.tofurc` with dev_overrides to skip registry.
+- **`fairshare` is a string attribute** (`slurm_account.fairshare` and the
+  `slurm_user` `association.fairshare` block), not a number. Slurm's fairshare
+  is either an ordinary integer weight or the special "parent" mode (inherit
+  the parent account's weight), and those don't share a numeric type. Slurm
+  stores parent as `shares_raw = 2147483647` (`INT32_MAX` /
+  `SLURMDB_FS_USE_PARENT`) and the REST API returns exactly that number with no
+  flag — verified identical across Slurm 25.05 / 25.11 / 26.05, so detecting it
+  by numeric equality is unambiguous. All the fairshare logic
+  (constants, `sharesRawFromFairshare` / `fairshareStringFromSharesRaw`
+  converters, and `fairshareValidator`, which rejects the literal sentinel with
+  a hint to use `"parent"`) lives in `internal/resources/fairshare.go`; the
+  converters replaced the old generic `intPtrFromInt64` helper. This was a
+  **breaking change** (was `types.Int64`) — see CHANGELOG.
 
 ### Version-gated features (Slurm 26.05 / API v0.0.45)
 

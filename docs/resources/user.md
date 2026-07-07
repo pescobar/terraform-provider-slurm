@@ -18,7 +18,7 @@ resource "slurm_user" "alice" {
 
   association {
     account     = slurm_account.physics.name
-    fairshare   = 50
+    fairshare   = "50"
     default_qos = slurm_qos.standard.name
     allowed_qos = [slurm_qos.standard.name, slurm_qos.priority.name]
   }
@@ -31,12 +31,12 @@ resource "slurm_user" "bob" {
 
   association {
     account   = slurm_account.physics.name
-    fairshare = 30
+    fairshare = "30"
   }
 
   association {
     account   = slurm_account.hep.name
-    fairshare = 20
+    fairshare = "20"
   }
 }
 
@@ -47,7 +47,7 @@ resource "slurm_user" "carol" {
 
   association {
     account     = slurm_account.gpu_users.name
-    fairshare   = 10
+    fairshare   = "10"
     default_qos = slurm_qos.standard.name
     allowed_qos = [slurm_qos.standard.name, slurm_qos.priority.name]
 
@@ -111,7 +111,7 @@ Optional:
 
 - `allowed_qos` (List of String) List of QOS names granted to this specific user's association. This is the same Slurm concept as slurm_account.allowed_qos (an association's QOS list), scoped to this user+account association instead of the account's own.
 - `default_qos` (String) Default QOS for this association.
-- `fairshare` (Number) Fairshare value for this association (default: 1).
+- `fairshare` (String) Fairshare value for this association: a non-negative integer weight (default: 1), or the keyword `"parent"` to inherit the parent account's fairshare.
 - `grp_jobs` (Number) Maximum running jobs across all users in this association group (GrpJobs).
 - `grp_jobs_accrue` (Number) Maximum pending jobs accruing priority across the group (GrpJobsAccrue).
 - `grp_submit_jobs` (Number) Maximum submitted jobs across the group (GrpSubmitJobs).
@@ -225,7 +225,7 @@ tofu import slurm_user.alice alice
 The provider uses a **null-preservation** pattern for Optional fields: a field
 is only tracked in state if it is explicitly declared in your configuration
 (i.e. non-null in state). This prevents Slurm's inherited defaults — such as
-`fairshare = 1` or a QOS list inherited from the account — from being treated
+`fairshare = "1"` or a QOS list inherited from the account — from being treated
 as drift after import.
 
 After `tofu import`, the state will contain:
@@ -297,7 +297,7 @@ resource "slurm_user" "alice" {
 
   association {
     account     = "physics"
-    fairshare   = 50               # declare if already set in Slurm
+    fairshare   = "50"             # declare if already set in Slurm
     default_qos = "standard"       # declare if already set in Slurm
     allowed_qos = ["standard", "priority"]  # declare if already set in Slurm
   }

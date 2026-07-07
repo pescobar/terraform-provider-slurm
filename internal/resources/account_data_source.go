@@ -39,7 +39,7 @@ func (d *accountDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 			"organization":   dsschema.StringAttribute{MarkdownDescription: "Organization the account belongs to.", Computed: true},
 			"parent_account": dsschema.StringAttribute{MarkdownDescription: "Parent account name in the Slurm tree.", Computed: true},
 
-			"fairshare":   dsschema.Int64Attribute{MarkdownDescription: "Fairshare value on the account-level association.", Computed: true},
+			"fairshare":   dsschema.StringAttribute{MarkdownDescription: "Fairshare value on the account-level association (integer weight, or \"parent\").", Computed: true},
 			"default_qos": dsschema.StringAttribute{MarkdownDescription: "Default QOS on the account-level association.", Computed: true},
 			"allowed_qos": dsschema.ListAttribute{MarkdownDescription: "Allowed QOS list on the account-level association.", Computed: true, ElementType: types.StringType},
 			"max_jobs":    dsschema.Int64Attribute{MarkdownDescription: "Maximum running jobs on the account-level association (MaxJobs).", Computed: true},
@@ -100,7 +100,7 @@ func accountAPIToState(ctx context.Context, c *client.Client, account *client.Ac
 		Organization: types.StringValue(account.Organization),
 		Parent:       types.StringValue(account.ParentAccount),
 
-		Fairshare:  types.Int64Null(),
+		Fairshare:  types.StringNull(),
 		DefaultQOS: types.StringNull(),
 		AllowedQOS: types.ListNull(types.StringType),
 		MaxJobs:    types.Int64Null(),
@@ -130,7 +130,7 @@ func accountAPIToState(ctx context.Context, c *client.Client, account *client.Ac
 			continue
 		}
 		if assoc.SharesRaw != nil {
-			state.Fairshare = types.Int64Value(int64(*assoc.SharesRaw))
+			state.Fairshare = types.StringValue(fairshareStringFromSharesRaw(*assoc.SharesRaw))
 		}
 		if assoc.Default != nil && assoc.Default.QOS != "" {
 			state.DefaultQOS = types.StringValue(assoc.Default.QOS)

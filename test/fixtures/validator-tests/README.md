@@ -18,7 +18,7 @@ tofu plan -var "slurm_token=$TOKEN"
 
 | Resource | Attribute | Validator class |
 |---|---|---|
-| `slurm_account.neg_fairshare` | `fairshare = -5` | `AtLeast(0)` |
+| `slurm_account.neg_fairshare` | `fairshare = -5` | `fairshareValidator` (`"parent"` or non-negative int) |
 | `slurm_account.neg_max_jobs` | `max_jobs = -1` | `AtLeast(0)` |
 | `slurm_user.neg_admin_level` | `admin_level = "Sudo"` | `OneOf("None","Operator","Administrator")` |
 | `slurm_user.neg_assoc_max_jobs` | `association { max_jobs = -10 }` | `AtLeast(0)` (nested in block) |

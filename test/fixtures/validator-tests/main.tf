@@ -38,13 +38,14 @@ variable "slurm_api_version" {
 }
 
 # ============================================================================
-# slurm_account — AtLeast(0) on fairshare and max_jobs
+# slurm_account — fairshareValidator on fairshare, AtLeast(0) on max_jobs
 # ============================================================================
 
-# Negative fairshare — expect "value must be at least 0".
+# Negative fairshare — expect "Invalid fairshare value" (fairshareValidator:
+# fairshare must be "parent" or a non-negative integer).
 resource "slurm_account" "neg_fairshare" {
   name      = "neg_fairshare"
-  fairshare = -5
+  fairshare = "-5"
 }
 
 # Negative max_jobs — expect "value must be at least 0".

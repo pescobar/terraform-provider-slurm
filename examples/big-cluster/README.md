@@ -284,7 +284,10 @@ depends on the field, and it's not the same answer for all of them:
   the same parent; users vs. sibling users within the same account). A
   user's fairshare and its account's fairshare are weights at different
   tiers, so there's no meaningful value to copy down; every association that
-  doesn't set its own just gets the same flat default.
+  doesn't set its own just gets the same flat default. To *explicitly* opt an
+  association into inheriting its parent's weight, set `fairshare: parent`
+  (the string keyword, Slurm's own term) instead of a number — that is the one
+  supported way to make fairshare cascade down.
 - `grp_tres`, `grp_tres_mins`, `grp_tres_run_mins` — these also do **not**
   inherit the account's value when omitted; Slurm falls back to its own
   (unlimited) default for the association.

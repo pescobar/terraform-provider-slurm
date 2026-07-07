@@ -19,7 +19,7 @@ func emptyAccountModel(name string) accountResourceModel {
 		Description:       types.StringNull(),
 		Organization:      types.StringNull(),
 		Parent:            types.StringNull(),
-		Fairshare:         types.Int64Null(),
+		Fairshare:         types.StringNull(),
 		DefaultQOS:        types.StringNull(),
 		AllowedQOS:        types.ListNull(types.StringType),
 		MaxJobs:           types.Int64Null(),
@@ -273,7 +273,7 @@ func TestBuildAccountAssociation_IdentityFieldsAlwaysSet(t *testing.T) {
 func TestBuildAccountAssociation_Fairshare(t *testing.T) {
 	ctx := context.Background()
 	m := emptyAccountModel("acct")
-	m.Fairshare = types.Int64Value(42)
+	m.Fairshare = types.StringValue("42")
 	var diags diag.Diagnostics
 	got, hasLimits := buildAccountAssociation(ctx, m, testCluster, &diags)
 	if !hasLimits {
@@ -281,6 +281,20 @@ func TestBuildAccountAssociation_Fairshare(t *testing.T) {
 	}
 	if got.SharesRaw == nil || *got.SharesRaw != 42 {
 		t.Errorf("SharesRaw: got %v, want 42", got.SharesRaw)
+	}
+}
+
+func TestBuildAccountAssociation_FairshareParent(t *testing.T) {
+	ctx := context.Background()
+	m := emptyAccountModel("acct")
+	m.Fairshare = types.StringValue("parent")
+	var diags diag.Diagnostics
+	got, hasLimits := buildAccountAssociation(ctx, m, testCluster, &diags)
+	if !hasLimits {
+		t.Error("hasLimits: got false, want true")
+	}
+	if got.SharesRaw == nil || *got.SharesRaw != fairshareParentSentinel {
+		t.Errorf("SharesRaw: got %v, want %d (parent sentinel)", got.SharesRaw, fairshareParentSentinel)
 	}
 }
 
@@ -372,7 +386,7 @@ func TestBuildAccountAssociation_MaxJobsAndTRESShareMaxStruct(t *testing.T) {
 func TestBuildAccountAssociation_AllFieldsCombined(t *testing.T) {
 	ctx := context.Background()
 	m := emptyAccountModel("acct")
-	m.Fairshare = types.Int64Value(10)
+	m.Fairshare = types.StringValue("10")
 	m.DefaultQOS = types.StringValue("priority")
 	m.AllowedQOS = stringListValue(t, "priority", "standard")
 	m.MaxJobs = types.Int64Value(100)

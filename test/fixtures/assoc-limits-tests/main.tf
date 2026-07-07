@@ -155,7 +155,7 @@ resource "slurm_user" "uat_fairshare_priority" {
 
   association {
     account   = slurm_account.lim.name
-    fairshare = 50
+    fairshare = "50"
     priority  = 5
   }
 }
@@ -172,7 +172,7 @@ resource "slurm_user" "uat_all_limits" {
 
   association {
     account   = slurm_account.lim.name
-    fairshare = 50
+    fairshare = "50"
     priority  = 10
 
     # Job-count limits
@@ -225,7 +225,7 @@ resource "slurm_user" "uat_multi_assoc" {
   # Primary association: job-count + wall-clock limits
   association {
     account         = slurm_account.lim.name
-    fairshare       = 30
+    fairshare       = "30"
     max_jobs        = 10
     max_submit_jobs = 40
     max_wall_pj     = 120

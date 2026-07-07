@@ -216,6 +216,36 @@ def sint(obj) -> Optional[int]:
     return None
 
 
+# Slurm stores fairshare=parent as shares_raw = INT32_MAX (SLURMDB_FS_USE_PARENT)
+# and the REST API surfaces it as exactly that number, with no accompanying
+# flag -- verified identical across Slurm 25.05 / 25.11 / 26.05. The provider's
+# slurm_account / slurm_user fairshare attribute is a STRING for this reason: an
+# integer weight, or the literal "parent".
+FAIRSHARE_PARENT = 2147483647
+
+
+def _fairshare_emit(shares) -> Optional[str]:
+    """
+    Map a raw shares_raw value to the string the provider's fairshare attribute
+    expects, or None to skip emitting it:
+
+      - INT32_MAX (SLURMDB_FS_USE_PARENT) -> "parent"
+      - any weight > 1                    -> its decimal string
+      - 0, 1, or non-int                  -> None (skip)
+
+    Skipping <= 1 preserves existing behaviour: 1 is Slurm's default and
+    indistinguishable from an explicit 1; 0 means "inherit from parent" and is
+    likewise Slurm's own fallback, not declared intent.
+    """
+    if not isinstance(shares, int):
+        return None
+    if shares == FAIRSHARE_PARENT:
+        return "parent"
+    if shares > 1:
+        return str(shares)
+    return None
+
+
 def sfloat(obj) -> Optional[float]:
     """Extract a float from a SlurmFloat dict. Returns None if unset."""
     if obj is None:
@@ -431,11 +461,11 @@ def _account_fields(acc: dict, assoc: Optional[dict], root_qos: list) -> list:
         fields.append(("parent_account", parent))
 
     if assoc:
-        shares = assoc.get("shares_raw")
-        # Skip fairshare <= 1: value of 1 is Slurm's default and indistinguishable
-        # from "explicitly set to 1"; 0 means "inherit from parent".
-        if isinstance(shares, int) and shares > 1:
-            fields.append(("fairshare", shares))
+        # fairshare emits "parent" for the INT32_MAX sentinel, a decimal string
+        # for a real weight, or nothing for Slurm's own defaults -- see
+        # _fairshare_emit().
+        if (fs := _fairshare_emit(assoc.get("shares_raw"))) is not None:
+            fields.append(("fairshare", fs))
 
         if dflt_qos := (assoc.get("default") or {}).get("qos") or "":
             fields.append(("default_qos", dflt_qos))
@@ -564,9 +594,8 @@ def _assoc_fields(a: dict, acct: Optional[dict] = None) -> list:
     if partition := (a.get("partition") or ""):
         fields.append(("partition", partition))
 
-    shares = a.get("shares_raw")
-    if isinstance(shares, int) and shares > 1:
-        fields.append(("fairshare", shares))
+    if (fs := _fairshare_emit(a.get("shares_raw"))) is not None:
+        fields.append(("fairshare", fs))
 
     # default_qos — see inheritance note in the docstring.
     dflt_qos      = (a.get("default") or {}).get("qos") or ""
@@ -1006,7 +1035,9 @@ locals {
         account = try(acct.name, acct_key)
         user    = try(m.user, m)
         # account_overrides.*
-        fairshare             = try(m.account_overrides.fairshare, null)
+        # fairshare is a string ("parent" or an integer weight); tostring()
+        # accepts either a quoted or a bare-number value in the YAML.
+        fairshare             = try(tostring(m.account_overrides.fairshare), null)
         default_qos           = try(m.account_overrides.default_qos, null)
         allowed_qos           = try(m.account_overrides.allowed_qos, null)
         max_jobs              = try(m.account_overrides.max_jobs, null)
@@ -1052,7 +1083,7 @@ resource "slurm_account" "this" {
   description    = try(each.value.description, null)
   organization   = try(each.value.organization, null)
   parent_account = try(each.value.parent_account, null)
-  fairshare      = try(each.value.fairshare, null)
+  fairshare      = try(tostring(each.value.fairshare), null)
   default_qos    = try(each.value.default_qos, null)
   allowed_qos    = try(each.value.allowed_qos, null)
   max_jobs       = try(each.value.max_jobs, null)

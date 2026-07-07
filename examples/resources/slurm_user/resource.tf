@@ -4,7 +4,7 @@ resource "slurm_user" "alice" {
 
   association {
     account     = slurm_account.physics.name
-    fairshare   = 50
+    fairshare   = "50"
     default_qos = slurm_qos.standard.name
     allowed_qos = [slurm_qos.standard.name, slurm_qos.priority.name]
   }
@@ -17,12 +17,12 @@ resource "slurm_user" "bob" {
 
   association {
     account   = slurm_account.physics.name
-    fairshare = 30
+    fairshare = "30"
   }
 
   association {
     account   = slurm_account.hep.name
-    fairshare = 20
+    fairshare = "20"
   }
 }
 
@@ -33,7 +33,7 @@ resource "slurm_user" "carol" {
 
   association {
     account     = slurm_account.gpu_users.name
-    fairshare   = 10
+    fairshare   = "10"
     default_qos = slurm_qos.standard.name
     allowed_qos = [slurm_qos.standard.name, slurm_qos.priority.name]
 

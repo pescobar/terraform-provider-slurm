@@ -34,7 +34,7 @@ tofu import slurm_user.alice alice
 The provider uses a **null-preservation** pattern for Optional fields: a field
 is only tracked in state if it is explicitly declared in your configuration
 (i.e. non-null in state). This prevents Slurm's inherited defaults — such as
-`fairshare = 1` or a QOS list inherited from the account — from being treated
+`fairshare = "1"` or a QOS list inherited from the account — from being treated
 as drift after import.
 
 After `tofu import`, the state will contain:
@@ -106,7 +106,7 @@ resource "slurm_user" "alice" {
 
   association {
     account     = "physics"
-    fairshare   = 50               # declare if already set in Slurm
+    fairshare   = "50"             # declare if already set in Slurm
     default_qos = "standard"       # declare if already set in Slurm
     allowed_qos = ["standard", "priority"]  # declare if already set in Slurm
   }

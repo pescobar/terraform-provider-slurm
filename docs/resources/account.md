@@ -16,7 +16,7 @@ resource "slurm_account" "physics" {
   name         = "physics"
   description  = "Physics department"
   organization = "university"
-  fairshare    = 100
+  fairshare    = "100"
   default_qos  = slurm_qos.standard.name
   allowed_qos  = [slurm_qos.standard.name, slurm_qos.priority.name]
 }
@@ -27,7 +27,9 @@ resource "slurm_account" "hep" {
   description    = "High Energy Physics group"
   organization   = "university"
   parent_account = slurm_account.physics.name
-  fairshare      = 50
+  # "parent" makes this account inherit physics's fairshare weight instead of
+  # carrying its own. Any non-negative integer (e.g. "50") sets an explicit weight.
+  fairshare = "parent"
 }
 
 # Account with per-job and group TRES limits
@@ -73,7 +75,7 @@ resource "slurm_account" "gpu_users" {
 - `allowed_qos` (List of String) List of allowed QOS names for this account.
 - `default_qos` (String) Default QOS for this account's association.
 - `description` (String) A description of the account.
-- `fairshare` (Number) Fairshare value for this account's association.
+- `fairshare` (String) Fairshare value for this account's association: a non-negative integer weight, or the keyword `"parent"` to inherit the parent account's fairshare.
 - `grp_tres` (Attributes Set) Maximum TRES in use at once across this account's group (GrpTRES). (see [below for nested schema](#nestedatt--grp_tres))
 - `grp_tres_mins` (Attributes Set) Maximum TRES-minutes for this account's group (GrpTRESMins). (see [below for nested schema](#nestedatt--grp_tres_mins))
 - `grp_tres_run_mins` (Attributes Set) Maximum TRES-minutes of currently running jobs for this account's group (GrpTRESRunMins). (see [below for nested schema](#nestedatt--grp_tres_run_mins))
@@ -184,7 +186,7 @@ tofu import slurm_account.physics physics
 Every attribute on `slurm_account` besides `id` and `name` is **Optional-only**
 (no `Computed`). The provider only writes such a field into state when it is
 already non-null in prior state. This prevents Slurm's inherited defaults —
-such as `fairshare = 1` or a QOS list inherited from the parent account — from
+such as `fairshare = "1"` or a QOS list inherited from the parent account — from
 appearing as drift after a fresh import.
 
 After `tofu import`, every Optional field (`fairshare`, `default_qos`,

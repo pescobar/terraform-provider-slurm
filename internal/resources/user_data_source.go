@@ -53,7 +53,7 @@ func (d *userDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 					Attributes: map[string]dsschema.Attribute{
 						"account":         dsschema.StringAttribute{MarkdownDescription: "Slurm account name.", Computed: true},
 						"partition":       dsschema.StringAttribute{MarkdownDescription: "Partition (empty for unscoped associations).", Computed: true},
-						"fairshare":       dsschema.Int64Attribute{MarkdownDescription: "Fairshare value.", Computed: true},
+						"fairshare":       dsschema.StringAttribute{MarkdownDescription: "Fairshare value (integer weight, or \"parent\").", Computed: true},
 						"priority":        dsschema.Int64Attribute{MarkdownDescription: "Association-level priority.", Computed: true},
 						"default_qos":     dsschema.StringAttribute{MarkdownDescription: "Default QOS.", Computed: true},
 						"allowed_qos":     dsschema.ListAttribute{MarkdownDescription: "QOS names granted to this specific association.", Computed: true, ElementType: types.StringType},
@@ -152,9 +152,9 @@ func userAPIToState(ctx context.Context, c *client.Client, user *client.User, di
 			state.DefaultAccount = types.StringValue(a.Account)
 		}
 
-		fairshare := types.Int64Null()
+		fairshare := types.StringNull()
 		if a.SharesRaw != nil {
-			fairshare = types.Int64Value(int64(*a.SharesRaw))
+			fairshare = types.StringValue(fairshareStringFromSharesRaw(*a.SharesRaw))
 		}
 		priority := types.Int64Null()
 		if a.Priority != nil && a.Priority.Set {

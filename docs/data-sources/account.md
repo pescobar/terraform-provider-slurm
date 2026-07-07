@@ -45,7 +45,7 @@ resource "slurm_account" "physics_hep" {
 - `allowed_qos` (List of String) Allowed QOS list on the account-level association.
 - `default_qos` (String) Default QOS on the account-level association.
 - `description` (String) Account description.
-- `fairshare` (Number) Fairshare value on the account-level association.
+- `fairshare` (String) Fairshare value on the account-level association (integer weight, or "parent").
 - `grp_tres` (Attributes Set) Group TRES (GrpTRES). (see [below for nested schema](#nestedatt--grp_tres))
 - `grp_tres_mins` (Attributes Set) Group TRES-minutes (GrpTRESMins). (see [below for nested schema](#nestedatt--grp_tres_mins))
 - `grp_tres_run_mins` (Attributes Set) Group running TRES-minutes (GrpTRESRunMins). (see [below for nested schema](#nestedatt--grp_tres_run_mins))

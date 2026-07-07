@@ -23,17 +23,6 @@ func slurmIntFromInt64(v types.Int64) *client.SlurmInt {
 	return &client.SlurmInt{Number: int(v.ValueInt64()), Set: true}
 }
 
-// intPtrFromInt64 converts a Terraform Int64 attribute into a *int suitable
-// for fields the API exposes as a plain integer (e.g. Association.SharesRaw).
-// Returns nil when the attribute is null or unknown.
-func intPtrFromInt64(v types.Int64) *int {
-	if v.IsNull() || v.IsUnknown() {
-		return nil
-	}
-	n := int(v.ValueInt64())
-	return &n
-}
-
 // configureClient extracts the *client.Client passed in via ProviderData by
 // the framework. Adds a diagnostic and returns nil when ProviderData is the
 // wrong type (which is a programming error, not a user error). Returns nil

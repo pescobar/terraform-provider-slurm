@@ -47,7 +47,9 @@ locals {
         account = try(acct.name, acct_key)
         user    = try(m.user, m)
         # account_overrides.*
-        fairshare             = try(m.account_overrides.fairshare, null)
+        # fairshare is a string ("parent" or an integer weight); tostring()
+        # accepts either a quoted or a bare-number value in the YAML.
+        fairshare             = try(tostring(m.account_overrides.fairshare), null)
         default_qos           = try(m.account_overrides.default_qos, null)
         allowed_qos           = try(m.account_overrides.allowed_qos, null)
         max_jobs              = try(m.account_overrides.max_jobs, null)
@@ -93,7 +95,7 @@ resource "slurm_account" "this" {
   description    = try(each.value.description, null)
   organization   = try(each.value.organization, null)
   parent_account = try(each.value.parent_account, null)
-  fairshare      = try(each.value.fairshare, null)
+  fairshare      = try(tostring(each.value.fairshare), null)
   default_qos    = try(each.value.default_qos, null)
   allowed_qos    = try(each.value.allowed_qos, null)
   max_jobs       = try(each.value.max_jobs, null)

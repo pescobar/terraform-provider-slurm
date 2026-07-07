@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **First-class `fairshare = "parent"` support.** Slurm's fairshare has a
+  special "parent" mode in which an account/association inherits its parent
+  account's fairshare weight instead of carrying its own; Slurm stores it as
+  `shares_raw = 2147483647` (`INT32_MAX` / `SLURMDB_FS_USE_PARENT`) and the
+  REST API surfaces it as exactly that number (verified identical across Slurm
+  25.05 / 25.11 / 26.05). `slurm_account.fairshare` and the `slurm_user`
+  `association.fairshare` attribute now accept the string `"parent"` to request
+  that mode, and read it back as `"parent"` (the sentinel is mapped both ways).
+  `tools/generate_import/generate_import.py` emits `"parent"` for such
+  associations. Covered by `fairshare_test.go` (converters + validator).
+
+### Changed
+
+- **BREAKING: `slurm_account.fairshare` and `slurm_user` `association.fairshare`
+  are now strings, not numbers.** This was required to express the `"parent"`
+  mode above alongside ordinary integer weights in a single attribute. A plain
+  weight must now be quoted: `fairshare = 100` becomes `fairshare = "100"`
+  (bare numbers are auto-converted by OpenTofu in most cases, but quoting is
+  the supported form and what `tofu plan` shows). The read-only
+  `data.slurm_account.fairshare` / `data.slurm_user.association[*].fairshare`
+  data-source attributes changed type accordingly.
+  - **Migration**: quote every `fairshare` value in your `slurm_account` and
+    `slurm_user` configuration (`fairshare = "N"`); no state migration or
+    resource replacement is needed — only the attribute's declared type
+    changed. In the `examples/big-cluster/` layout, `generate.tf` wraps the
+    value in `tostring()`, so both quoted and bare-number YAML keep working.
+    The literal number `2147483647` is rejected in config with a hint to use
+    `"parent"` instead (it canonicalises to `"parent"` on read).
+
 ## [0.3.0] - 2026-07-06
 
 ### Changed

@@ -66,7 +66,7 @@ resource "slurm_account" "dept_a" {
   name         = "dept_a"
   description  = "Department A"
   organization = "org"
-  fairshare    = 200
+  fairshare    = "200"
   default_qos  = slurm_qos.medium.name
   allowed_qos  = [slurm_qos.low.name, slurm_qos.medium.name, slurm_qos.high.name]
   max_jobs     = 500
@@ -77,7 +77,7 @@ resource "slurm_account" "dept_b" {
   name         = "dept_b"
   description  = "Department B"
   organization = "org"
-  fairshare    = 100
+  fairshare    = "100"
   allowed_qos  = [slurm_qos.debug.name]
 }
 
@@ -85,13 +85,13 @@ resource "slurm_account" "dept_b" {
 resource "slurm_account" "team_a1" {
   name           = "team_a1"
   parent_account = slurm_account.dept_a.name
-  fairshare      = 80
+  fairshare      = "80"
 }
 
 resource "slurm_account" "team_a2" {
   name           = "team_a2"
   parent_account = slurm_account.dept_a.name
-  fairshare      = 120
+  fairshare      = "120"
   default_qos    = slurm_qos.high.name
   allowed_qos    = [slurm_qos.low.name, slurm_qos.medium.name, slurm_qos.high.name]
 }
@@ -100,7 +100,7 @@ resource "slurm_account" "team_a2" {
 resource "slurm_account" "team_b1" {
   name           = "team_b1"
   parent_account = slurm_account.dept_b.name
-  fairshare      = 50
+  fairshare      = "50"
   allowed_qos    = [slurm_qos.low.name, slurm_qos.debug.name]
 }
 
@@ -133,7 +133,7 @@ resource "slurm_user" "fairshare_only" {
 
   association {
     account   = slurm_account.dept_b.name
-    fairshare = 15
+    fairshare = "15"
   }
 }
 
@@ -182,7 +182,7 @@ resource "slurm_user" "fairshare_maxjobs" {
 
   association {
     account   = slurm_account.dept_a.name
-    fairshare = 8
+    fairshare = "8"
     max_jobs  = 20
   }
 }
@@ -209,7 +209,7 @@ resource "slurm_user" "fairshare_dqos" {
 
   association {
     account     = slurm_account.dept_a.name
-    fairshare   = 12
+    fairshare   = "12"
     default_qos = slurm_qos.low.name
   }
 }
@@ -234,7 +234,7 @@ resource "slurm_user" "all_fields" {
 
   association {
     account     = slurm_account.dept_a.name
-    fairshare   = 20
+    fairshare   = "20"
     default_qos = slurm_qos.high.name
     max_jobs    = 50
     allowed_qos = [slurm_qos.low.name, slurm_qos.medium.name, slurm_qos.high.name]
@@ -252,7 +252,7 @@ resource "slurm_user" "operator" {
 
   association {
     account     = slurm_account.dept_a.name
-    fairshare   = 30
+    fairshare   = "30"
     default_qos = slurm_qos.high.name
     max_jobs    = 80
   }
@@ -280,7 +280,7 @@ resource "slurm_user" "two_accounts" {
 
   association {
     account     = slurm_account.dept_a.name
-    fairshare   = 10
+    fairshare   = "10"
     max_jobs    = 25
     allowed_qos = [slurm_qos.low.name, slurm_qos.medium.name]
   }
@@ -299,7 +299,7 @@ resource "slurm_user" "full_and_minimal" {
 
   association {
     account     = slurm_account.team_a1.name
-    fairshare   = 18
+    fairshare   = "18"
     default_qos = slurm_qos.medium.name
     max_jobs    = 35
     allowed_qos = [slurm_qos.low.name, slurm_qos.medium.name]
@@ -318,7 +318,7 @@ resource "slurm_user" "three_accounts" {
 
   association {
     account   = slurm_account.team_a1.name
-    fairshare = 5
+    fairshare = "5"
     max_jobs  = 15
   }
 
@@ -342,7 +342,7 @@ resource "slurm_user" "parent_child" {
 
   association {
     account     = slurm_account.team_b1.name
-    fairshare   = 25
+    fairshare   = "25"
     default_qos = slurm_qos.low.name
     max_jobs    = 30
     allowed_qos = [slurm_qos.low.name, slurm_qos.debug.name]
@@ -362,7 +362,7 @@ resource "slurm_user" "full_limits_multi" {
 
   association {
     account     = slurm_account.dept_a.name
-    fairshare   = 50
+    fairshare   = "50"
     default_qos = slurm_qos.high.name
     max_jobs    = 100
     allowed_qos = [slurm_qos.low.name, slurm_qos.medium.name, slurm_qos.high.name]
@@ -370,7 +370,7 @@ resource "slurm_user" "full_limits_multi" {
 
   association {
     account     = slurm_account.team_a1.name
-    fairshare   = 20
+    fairshare   = "20"
     default_qos = slurm_qos.medium.name
     max_jobs    = 40
     allowed_qos = [slurm_qos.low.name, slurm_qos.medium.name]
@@ -378,7 +378,7 @@ resource "slurm_user" "full_limits_multi" {
 
   association {
     account     = slurm_account.team_a2.name
-    fairshare   = 30
+    fairshare   = "30"
     default_qos = slurm_qos.low.name
     max_jobs    = 60
     allowed_qos = [slurm_qos.low.name]
@@ -394,7 +394,7 @@ resource "slurm_user" "operator_multi" {
 
   association {
     account     = slurm_account.dept_a.name
-    fairshare   = 40
+    fairshare   = "40"
     default_qos = slurm_qos.high.name
     allowed_qos = [slurm_qos.medium.name, slurm_qos.high.name]
   }
@@ -406,7 +406,7 @@ resource "slurm_user" "operator_multi" {
 
   association {
     account     = slurm_account.team_a2.name
-    fairshare   = 10
+    fairshare   = "10"
     default_qos = slurm_qos.medium.name
     max_jobs    = 15
     allowed_qos = [slurm_qos.low.name, slurm_qos.medium.name]

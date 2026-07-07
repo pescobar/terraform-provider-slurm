@@ -41,12 +41,12 @@ resource "slurm_qos" "priority" {
 }
 
 resource "slurm_account" "physics" {
-  name           = "physics"
-  description    = "Physics department"
-  organization   = "university"
-  fairshare      = 100
-  default_qos    = slurm_qos.standard.name
-  allowed_qos    = [slurm_qos.standard.name, slurm_qos.priority.name]
+  name         = "physics"
+  description  = "Physics department"
+  organization = "university"
+  fairshare    = "100"
+  default_qos  = slurm_qos.standard.name
+  allowed_qos  = [slurm_qos.standard.name, slurm_qos.priority.name]
 }
 
 resource "slurm_user" "bob" {
