@@ -95,6 +95,56 @@ If you're ever unsure which sub-key a field belongs in: check the "Supported
 account-level fields" table below. If the field is in that table, it goes
 under `account_overrides`; if it isn't, it goes under `association`.
 
+### Account-wide association defaults (`association_defaults`)
+
+When many members of an account should carry the **same** association value —
+the common case is `fairshare: parent` (every member draws on the account's own
+fairshare weight instead of carrying their own) — repeating it on every member
+is noise and a maintenance hazard. Declare it once in an optional
+`association_defaults:` block, which mirrors the same two sub-maps a member
+uses:
+
+```yaml
+name: zavolan
+fairshare: "25"
+default_qos: cpu
+
+association_defaults:
+  account_overrides:
+    fairshare: parent      # applied to every member below…
+  # association:           # (association-only fields work here too)
+  #   partition: cpu
+
+user_associations:
+  - azevedo                # bare members inherit the defaults
+  - bakma
+  - breda
+  - user: ertuna
+    account_overrides:
+      fairshare: "50"      # …unless the member sets the field itself, which wins
+```
+
+Precedence for each field is: **the member's own value → the account's
+`association_defaults` value → the field's normal "omitted" resolution** (see
+the table below). A member overrides only the fields it names; every other
+field still falls through to the default. Note this is distinct from the
+account's *own* top-level `fairshare: "25"` (which governs the account's
+association under its parent) — `association_defaults` governs the account's
+**members**.
+
+Why `fairshare` specifically can't just be omitted to get this: a member
+association with no `fairshare` gets Slurm's built-in default weight of `1`,
+**not** `parent`. So "all members inherit the account's weight" has to be
+stated somewhere — `association_defaults` lets you state it once.
+
+`tools/generate_import/generate_import.py` produces this form automatically:
+when it exports an account whose members **all** carry an identical value for a
+field, it hoists that field into `association_defaults` and lists the members
+as bare names, so re-exporting a cluster where every user is `fairshare: parent`
+doesn't reintroduce the per-member repetition. It only hoists a value shared by
+*every* member (so hoisting can never silently change anyone's config); a field
+that varies across members stays spelled out per member.
+
 ### Supported account-level fields — complete reference
 
 `generate.tf` passes every one of these through to `slurm_account` verbatim
