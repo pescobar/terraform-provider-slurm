@@ -84,7 +84,7 @@ resource "slurm_account" "physics" {
   name         = "physics"
   description  = "Physics department"
   organization = "university"
-  fairshare    = 100
+  fairshare    = "100"
   default_qos  = slurm_qos.standard.name
   allowed_qos  = [slurm_qos.basic.name, slurm_qos.standard.name, slurm_qos.priority.name]
   max_jobs     = 200
@@ -95,7 +95,7 @@ resource "slurm_account" "chemistry" {
   name         = "chemistry"
   description  = "Chemistry department"
   organization = "university"
-  fairshare    = 50
+  fairshare    = "50"
   default_qos  = slurm_qos.basic.name
   allowed_qos  = [slurm_qos.basic.name, slurm_qos.standard.name]
 }
@@ -106,7 +106,7 @@ resource "slurm_account" "physics_hep" {
   description    = "High Energy Physics subgroup"
   organization   = "university"
   parent_account = slurm_account.physics.name
-  fairshare      = 40
+  fairshare      = "40"
   default_qos    = slurm_qos.priority.name
   allowed_qos    = [slurm_qos.standard.name, slurm_qos.priority.name, slurm_qos.express.name]
   max_jobs       = 50
@@ -117,7 +117,7 @@ resource "slurm_account" "physics_astro" {
   name           = "physics_astro"
   description    = "Astrophysics subgroup"
   parent_account = slurm_account.physics.name
-  fairshare      = 60
+  fairshare      = "60"
   allowed_qos    = [slurm_qos.debug.name]
 }
 
@@ -197,7 +197,7 @@ resource "slurm_user" "bob" {
 
   association {
     account     = slurm_account.physics.name
-    fairshare   = 10
+    fairshare   = "10"
     default_qos = slurm_qos.standard.name
     max_jobs    = 20
     allowed_qos = [slurm_qos.basic.name, slurm_qos.standard.name]
@@ -212,14 +212,14 @@ resource "slurm_user" "carol" {
 
   association {
     account     = slurm_account.physics.name
-    fairshare   = 20
+    fairshare   = "20"
     default_qos = slurm_qos.standard.name
     allowed_qos = [slurm_qos.basic.name, slurm_qos.standard.name, slurm_qos.priority.name]
   }
 
   association {
     account     = slurm_account.chemistry.name
-    fairshare   = 5
+    fairshare   = "5"
     default_qos = slurm_qos.basic.name
   }
 
@@ -237,7 +237,7 @@ resource "slurm_user" "dave" {
 
   association {
     account   = slurm_account.chemistry.name
-    fairshare = 8
+    fairshare = "8"
     max_jobs  = 5
   }
 

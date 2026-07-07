@@ -48,13 +48,13 @@ resource "slurm_qos" "ds_qos" {
 resource "slurm_account" "ds_acct" {
   name        = "ds_acct"
   description = "Account exercised by data-source-tests"
-  fairshare   = 4
+  fairshare   = "4"
   max_jobs    = 50
 }
 
 resource "slurm_account" "ds_acct_alt" {
   name      = "ds_acct_alt"
-  fairshare = 2
+  fairshare = "2"
 }
 
 resource "slurm_user" "ds_user" {
@@ -64,7 +64,7 @@ resource "slurm_user" "ds_user" {
 
   association {
     account   = slurm_account.ds_acct.name
-    fairshare = 7
+    fairshare = "7"
     max_jobs  = 12
   }
 }
@@ -77,11 +77,11 @@ resource "slurm_user" "ds_user_multi" {
 
   association {
     account   = slurm_account.ds_acct.name
-    fairshare = 5
+    fairshare = "5"
   }
   association {
     account   = slurm_account.ds_acct_alt.name
-    fairshare = 3
+    fairshare = "3"
   }
 }
 

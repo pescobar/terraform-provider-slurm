@@ -32,7 +32,7 @@ type accountResourceModel struct {
 	Organization types.String `tfsdk:"organization"`
 	Parent       types.String `tfsdk:"parent_account"`
 	// Account-level association attributes (direct on the account)
-	Fairshare  types.Int64  `tfsdk:"fairshare"`
+	Fairshare  types.String `tfsdk:"fairshare"`
 	DefaultQOS types.String `tfsdk:"default_qos"`
 	AllowedQOS types.List   `tfsdk:"allowed_qos"`
 	MaxJobs    types.Int64  `tfsdk:"max_jobs"`
@@ -84,10 +84,10 @@ func (r *accountResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Optional:            true,
 			},
 			// Account-level association attributes
-			"fairshare": schema.Int64Attribute{
-				MarkdownDescription: "Fairshare value for this account's association.",
+			"fairshare": schema.StringAttribute{
+				MarkdownDescription: "Fairshare value for this account's association: a non-negative integer weight, or the keyword `\"parent\"` to inherit the parent account's fairshare.",
 				Optional:            true,
-				Validators:          []validator.Int64{int64validator.AtLeast(0)},
+				Validators:          []validator.String{fairshareValidator{}},
 			},
 			"default_qos": schema.StringAttribute{
 				MarkdownDescription: "Default QOS for this account's association.",
@@ -232,7 +232,7 @@ func (r *accountResource) Read(ctx context.Context, req resource.ReadRequest, re
 			// from appearing in state when the config doesn't set those fields,
 			// which would otherwise cause perpetual drift after import.
 			if assoc.SharesRaw != nil && !state.Fairshare.IsNull() {
-				state.Fairshare = types.Int64Value(int64(*assoc.SharesRaw))
+				state.Fairshare = types.StringValue(fairshareStringFromSharesRaw(*assoc.SharesRaw))
 			}
 			if assoc.Default != nil && assoc.Default.QOS != "" && !state.DefaultQOS.IsNull() {
 				state.DefaultQOS = types.StringValue(assoc.Default.QOS)
@@ -370,7 +370,7 @@ func buildAccountAssociation(ctx context.Context, plan accountResourceModel, clu
 	}
 	hasLimits := false
 
-	if v := intPtrFromInt64(plan.Fairshare); v != nil {
+	if v := sharesRawFromFairshare(plan.Fairshare); v != nil {
 		assoc.SharesRaw = v
 		hasLimits = true
 	}

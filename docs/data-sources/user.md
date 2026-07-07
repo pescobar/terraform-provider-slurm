@@ -61,7 +61,7 @@ Read-Only:
 - `account` (String) Slurm account name.
 - `allowed_qos` (List of String) QOS names granted to this specific association.
 - `default_qos` (String) Default QOS.
-- `fairshare` (Number) Fairshare value.
+- `fairshare` (String) Fairshare value (integer weight, or "parent").
 - `grp_jobs` (Number) Group running jobs limit (GrpJobs).
 - `grp_jobs_accrue` (Number) Group jobs-accrue limit (GrpJobsAccrue).
 - `grp_submit_jobs` (Number) Group submit-jobs limit (GrpSubmitJobs).

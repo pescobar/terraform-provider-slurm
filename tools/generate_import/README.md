@@ -133,10 +133,14 @@ is Slurm's built-in top-level account and is not managed by this provider.
 Child accounts include a `depends_on` referencing their parent so OpenTofu
 creates and imports them in the correct order.
 
-`fairshare` is omitted when its value is `≤ 1` because Slurm's API returns
-`1` both for "explicitly set to 1" and "never configured" (the default), so
-the two cases are indistinguishable. If you need to explicitly manage
-`fairshare = 1`, add it to the generated HCL by hand.
+`fairshare` is emitted as a **string** (the provider's attribute is a string,
+not a number): a decimal weight like `"50"`, or the keyword `"parent"` when the
+association is in parent-inheritance mode. Slurm stores `fairshare=parent` as
+`shares_raw = 2147483647` (`INT32_MAX` / `SLURMDB_FS_USE_PARENT`); the script
+maps that sentinel back to `"parent"`. It is omitted when its value is `≤ 1`
+because Slurm's API returns `1` both for "explicitly set to 1" and "never
+configured" (the default), so the two cases are indistinguishable. If you need
+to explicitly manage `fairshare = "1"`, add it to the generated HCL by hand.
 
 `organization` is omitted when it equals the account's own name: Slurm
 defaults `Organization` to the account name when it is not explicitly set
@@ -179,7 +183,8 @@ diverge from that pin, same as any other explicit override.
 `grp_tres` / `grp_tres_mins` / `grp_tres_run_mins` do **not** inherit this
 way (also verified) and are always emitted as the association's own value.
 
-**`fairshare`:** same rule as accounts — omitted when `≤ 1`.
+**`fairshare`:** same rule as accounts — emitted as a string (`"50"` or
+`"parent"`), omitted when `≤ 1`.
 
 **`admin_level`:** omitted when `None` (the default); included for `Operator`
 and `Administrator`.

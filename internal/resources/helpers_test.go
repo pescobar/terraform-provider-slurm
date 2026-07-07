@@ -78,43 +78,6 @@ func TestSlurmIntFromInt64_Negative(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// intPtrFromInt64
-// ---------------------------------------------------------------------------
-
-func TestIntPtrFromInt64_Null(t *testing.T) {
-	if got := intPtrFromInt64(types.Int64Null()); got != nil {
-		t.Errorf("expected nil for null input, got %d", *got)
-	}
-}
-
-func TestIntPtrFromInt64_Unknown(t *testing.T) {
-	if got := intPtrFromInt64(types.Int64Unknown()); got != nil {
-		t.Errorf("expected nil for unknown input, got %d", *got)
-	}
-}
-
-func TestIntPtrFromInt64_Value(t *testing.T) {
-	got := intPtrFromInt64(types.Int64Value(7))
-	if got == nil {
-		t.Fatal("expected non-nil for valued input")
-	}
-	if *got != 7 {
-		t.Errorf("got %d, want 7", *got)
-	}
-}
-
-func TestIntPtrFromInt64_Zero(t *testing.T) {
-	// Zero is a legitimate value (e.g. fairshare=0 is valid in Slurm).
-	got := intPtrFromInt64(types.Int64Value(0))
-	if got == nil {
-		t.Fatal("expected non-nil for zero value")
-	}
-	if *got != 0 {
-		t.Errorf("got %d, want 0", *got)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // configureClient
 // ---------------------------------------------------------------------------
 

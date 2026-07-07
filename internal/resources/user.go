@@ -46,8 +46,8 @@ type associationModel struct {
 	Account   types.String `tfsdk:"account"`
 	Partition types.String `tfsdk:"partition"`
 	// Priority and fairshare
-	Fairshare types.Int64 `tfsdk:"fairshare"`
-	Priority  types.Int64 `tfsdk:"priority"`
+	Fairshare types.String `tfsdk:"fairshare"`
+	Priority  types.Int64  `tfsdk:"priority"`
 	// Default settings
 	DefaultQOS types.String `tfsdk:"default_qos"`
 	AllowedQOS types.List   `tfsdk:"allowed_qos"`
@@ -81,7 +81,7 @@ func associationModelType() map[string]attr.Type {
 		"account":   types.StringType,
 		"partition": types.StringType,
 		// Priority and fairshare
-		"fairshare": types.Int64Type,
+		"fairshare": types.StringType,
 		"priority":  types.Int64Type,
 		// Default settings
 		"default_qos": types.StringType,
@@ -218,10 +218,10 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 							MarkdownDescription: "Optional partition to scope this association to.",
 							Optional:            true,
 						},
-						"fairshare": schema.Int64Attribute{
-							MarkdownDescription: "Fairshare value for this association (default: 1).",
+						"fairshare": schema.StringAttribute{
+							MarkdownDescription: "Fairshare value for this association: a non-negative integer weight (default: 1), or the keyword `\"parent\"` to inherit the parent account's fairshare.",
 							Optional:            true,
-							Validators:          []validator.Int64{int64validator.AtLeast(0)},
+							Validators:          []validator.String{fairshareValidator{}},
 						},
 						"priority": schema.Int64Attribute{
 							MarkdownDescription: "Association-level priority (distinct from QOS priority).",
@@ -785,7 +785,7 @@ func (r *userResource) extractAssociations(ctx context.Context, model userResour
 			a.Partition = am.Partition.ValueString()
 		}
 
-		a.SharesRaw = intPtrFromInt64(am.Fairshare)
+		a.SharesRaw = sharesRawFromFairshare(am.Fairshare)
 		a.Priority = slurmIntFromInt64(am.Priority)
 
 		// Default settings
@@ -911,7 +911,7 @@ func (r *userResource) apiAssociationsToState(ctx context.Context, assocs []clie
 			"account":   types.StringValue(a.Account),
 			"partition": partitionVal,
 			// Priority and fairshare
-			"fairshare": types.Int64Null(),
+			"fairshare": types.StringNull(),
 			"priority":  types.Int64Null(),
 			// Default settings
 			"default_qos": types.StringNull(),
@@ -945,10 +945,10 @@ func (r *userResource) apiAssociationsToState(ctx context.Context, assocs []clie
 		if a.SharesRaw != nil {
 			if hasPrior {
 				if !prior.Fairshare.IsNull() {
-					attrs["fairshare"] = types.Int64Value(int64(*a.SharesRaw))
+					attrs["fairshare"] = types.StringValue(fairshareStringFromSharesRaw(*a.SharesRaw))
 				}
 			} else if *a.SharesRaw != 1 {
-				attrs["fairshare"] = types.Int64Value(int64(*a.SharesRaw))
+				attrs["fairshare"] = types.StringValue(fairshareStringFromSharesRaw(*a.SharesRaw))
 			}
 		}
 

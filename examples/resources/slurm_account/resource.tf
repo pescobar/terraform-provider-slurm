@@ -2,7 +2,7 @@ resource "slurm_account" "physics" {
   name         = "physics"
   description  = "Physics department"
   organization = "university"
-  fairshare    = 100
+  fairshare    = "100"
   default_qos  = slurm_qos.standard.name
   allowed_qos  = [slurm_qos.standard.name, slurm_qos.priority.name]
 }
@@ -13,7 +13,9 @@ resource "slurm_account" "hep" {
   description    = "High Energy Physics group"
   organization   = "university"
   parent_account = slurm_account.physics.name
-  fairshare      = 50
+  # "parent" makes this account inherit physics's fairshare weight instead of
+  # carrying its own. Any non-negative integer (e.g. "50") sets an explicit weight.
+  fairshare = "parent"
 }
 
 # Account with per-job and group TRES limits
