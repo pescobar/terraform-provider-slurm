@@ -219,7 +219,7 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 							Optional:            true,
 						},
 						"fairshare": schema.StringAttribute{
-							MarkdownDescription: "Fairshare value for this association: a non-negative integer weight (default: 1), or the keyword `\"parent\"` to inherit the parent account's fairshare.",
+							MarkdownDescription: "Fairshare value for this association: a non-negative integer weight (default: 1), or the keyword `\"parent\"` to inherit the parent account's fairshare. Removing this attribute stops managing it — it does NOT reset the value in Slurm; set it explicitly (e.g. `\"1\"`) to reset.",
 							Optional:            true,
 							Validators:          []validator.String{fairshareValidator{}},
 						},

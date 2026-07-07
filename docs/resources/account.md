@@ -75,7 +75,7 @@ resource "slurm_account" "gpu_users" {
 - `allowed_qos` (List of String) List of allowed QOS names for this account.
 - `default_qos` (String) Default QOS for this account's association.
 - `description` (String) A description of the account.
-- `fairshare` (String) Fairshare value for this account's association: a non-negative integer weight, or the keyword `"parent"` to inherit the parent account's fairshare.
+- `fairshare` (String) Fairshare value for this account's association: a non-negative integer weight, or the keyword `"parent"` to inherit the parent account's fairshare. Removing this attribute stops managing it — it does NOT reset the value in Slurm; set it explicitly (e.g. `"1"`) to reset.
 - `grp_tres` (Attributes Set) Maximum TRES in use at once across this account's group (GrpTRES). (see [below for nested schema](#nestedatt--grp_tres))
 - `grp_tres_mins` (Attributes Set) Maximum TRES-minutes for this account's group (GrpTRESMins). (see [below for nested schema](#nestedatt--grp_tres_mins))
 - `grp_tres_run_mins` (Attributes Set) Maximum TRES-minutes of currently running jobs for this account's group (GrpTRESRunMins). (see [below for nested schema](#nestedatt--grp_tres_run_mins))
@@ -209,6 +209,37 @@ tofu apply
 # Step 3 — verify clean plan (must report no changes)
 tofu plan -detailed-exitcode
 ```
+
+### Removing an attribute from config does not reset it — it stops managing it
+
+**Deleting a field from your configuration is not the same as resetting it to
+Slurm's default.** Because every attribute besides `id` and `name` is
+Optional-only (see *Null-preservation after import* above), removing it means
+"the provider no longer manages this value", **not** "set it back to what Slurm
+would assign by default".
+
+Concretely, if you have:
+
+```hcl
+resource "slurm_account" "physics" {
+  name      = "physics"
+  fairshare = "parent"
+}
+```
+
+and you then delete the `fairshare` line, the account **stays in `parent` mode
+in Slurm** — it is *not* reset to the default weight of `1`. On update the
+provider simply omits `shares_raw` from its API call (Slurm's upsert leaves any
+omitted field untouched), and the null-preservation rule then keeps the field
+out of state, so `tofu plan` reports no changes even though Slurm still holds
+`parent`. The same applies to `default_qos`, `allowed_qos`, `max_jobs`, the
+TRES limits, and `parent_account`: removing any of them stops tracking it,
+leaving whatever value is currently live in Slurm in place.
+
+To actually **reset** a field, set it explicitly to the value you want rather
+than deleting it — e.g. `fairshare = "1"` to restore the default weight. To
+**stop managing** the resource entirely without changing anything in Slurm, use
+`tofu state rm`.
 
 ### The built-in `root` account can never be deleted
 

@@ -126,7 +126,7 @@ func (r *accountResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			// Account-level association attributes
 			"fairshare": schema.StringAttribute{
-				MarkdownDescription: "Fairshare value for this account's association: a non-negative integer weight, or the keyword `\"parent\"` to inherit the parent account's fairshare.",
+				MarkdownDescription: "Fairshare value for this account's association: a non-negative integer weight, or the keyword `\"parent\"` to inherit the parent account's fairshare. Removing this attribute stops managing it — it does NOT reset the value in Slurm; set it explicitly (e.g. `\"1\"`) to reset.",
 				Optional:            true,
 				Validators:          []validator.String{fairshareValidator{}},
 			},

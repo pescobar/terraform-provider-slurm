@@ -71,6 +71,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   in `docs/resources/account.md` (and its template), `examples/big-cluster/README.md`,
   and as a detailed future-work entry in `CLAUDE.md`'s "What's Left" section.
 
+### Documentation
+
+- **Documented that removing an Optional attribute from configuration does not
+  reset it in Slurm — it only stops managing it.** Because every
+  `slurm_account` attribute besides `id`/`name` is Optional-only, deleting a
+  field (e.g. `fairshare = "parent"`) omits it from the API upsert and the
+  null-preservation rule keeps it out of state, so Slurm keeps the live value
+  and `tofu plan` stays clean. To reset, set the value explicitly (`fairshare
+  = "1"`); to stop managing without changing Slurm, use `tofu state rm`. Added
+  a "Removing an attribute from config does not reset it" section to
+  `docs/resources/account.md` (and its `templates/` source) and a note on the
+  `fairshare` attribute description in both `slurm_account` and `slurm_user`.
+
 ## [0.3.0] - 2026-07-06
 
 ### Changed
