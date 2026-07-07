@@ -77,6 +77,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   metacharacters — leaving ordinary usernames and account names (`alice`,
   `web-admin`) unquoted for readability. Purely a formatting change to
   generated output; the parsed values are identical (verified round-trip).
+  `fairshare` is emitted unquoted too — a bare integer weight (`fairshare: 25`)
+  or bare `parent` — because `generate.tf` coerces it with `tostring()`, so the
+  quotes the string-typed HCL attribute needs are not needed in this YAML.
 - **`examples/big-cluster/`: account-wide `association_defaults`.** An account
   YAML may now declare an optional `association_defaults:` block (same
   `account_overrides:`/`association:` sub-maps as a member) whose values apply

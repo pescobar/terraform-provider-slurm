@@ -849,6 +849,14 @@ def _yaml_scalar(v) -> str:
 def _yaml_kv(key: str, val, indent: int = 0) -> str:
     """Render a `key: value` YAML line (or block for lists), matching our types."""
     pad = " " * indent
+    # fairshare is the one field the big-cluster layout does NOT need quoted:
+    # generate.tf coerces it with tostring(), so a bare integer weight (25, not
+    # "25") and bare "parent" both work, and bare reads cleaner. Emit an integer
+    # weight unquoted; "parent" already renders bare via _yaml_scalar's
+    # conditional quoting. Every OTHER numeric-looking value (usernames like
+    # 007, etc.) still gets quoted -- only fairshare rides through tostring().
+    if key == "fairshare" and isinstance(val, str) and val.isdigit():
+        return f"{pad}{key}: {val}"
     if isinstance(val, list):
         if val and isinstance(val[0], dict):  # TRES list -> block of flow maps
             out = [f"{pad}{key}:"]
