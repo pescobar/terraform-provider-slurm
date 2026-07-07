@@ -811,15 +811,39 @@ def _safe_stem(name: str, used: dict) -> str:
     return stem
 
 
+# A string is safe to emit as a bare YAML scalar only if it is an
+# identifier-like token that no YAML parser could mistake for something else.
+# Requiring a leading letter/underscore rules out every numeric form in one
+# shot (123, 007, 0x1f, 1e5, 1.5 all start with a digit); the reserved set
+# rules out the words YAML 1.1 coerces to bool/null. Anything else (spaces,
+# ':', '#', '/', leading '-', flow punctuation, empty) gets quoted. This keeps
+# ordinary usernames/account names (alice, web-admin) unquoted while
+# still being safe for a name like "no", "007", or "gres/gpu".
+_YAML_PLAIN_SAFE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
+_YAML_RESERVED = frozenset((
+    "true", "false", "yes", "no", "on", "off", "y", "n",
+    "null", "none", "nan", "inf",
+))
+
+
+def _yaml_needs_quote(s: str) -> bool:
+    return not _YAML_PLAIN_SAFE.match(s) or s.lower() in _YAML_RESERVED
+
+
 def _yaml_scalar(v) -> str:
-    """Render a scalar for YAML. Strings are always double-quoted (robust)."""
+    """Render a scalar for YAML. Strings are quoted only when a bare scalar
+    would be ambiguous (see _yaml_needs_quote); identifier-like values such as
+    usernames and account names are emitted unquoted for readability."""
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, int):
         return str(v)
     if isinstance(v, float):
         return repr(v)
-    return '"' + str(v).replace("\\", "\\\\").replace('"', '\\"') + '"'
+    s = str(v)
+    if _yaml_needs_quote(s):
+        return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return s
 
 
 def _yaml_kv(key: str, val, indent: int = 0) -> str:
