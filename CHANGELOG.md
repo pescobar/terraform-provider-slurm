@@ -70,6 +70,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   API responses but never exposed, read, or written by `slurm_account`. Noted
   in `docs/resources/account.md` (and its template), `examples/big-cluster/README.md`,
   and as a detailed future-work entry in `CLAUDE.md`'s "What's Left" section.
+- **`generate_import.py` now emits bare (unquoted) YAML scalars where safe.**
+  The `--layout big-cluster` writer previously double-quoted every string; it
+  now quotes only values a YAML parser could misread — numeric-looking names
+  (`007`), reserved words (`no`, `yes`, `null`), or anything containing YAML
+  metacharacters — leaving ordinary usernames and account names (`alice`,
+  `web-admin`) unquoted for readability. Purely a formatting change to
+  generated output; the parsed values are identical (verified round-trip).
 
 ## [0.3.0] - 2026-07-06
 
