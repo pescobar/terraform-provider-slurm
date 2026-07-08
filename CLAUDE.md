@@ -193,6 +193,18 @@ Consequence for import: after `tofu import`, all Optional fields start null. A
 **reconcile apply** (`tofu apply`) is required to write config-declared values to
 Slurm and populate state. After that, `tofu plan` must be clean.
 
+Second consequence — **removing a field from config does not reset it in Slurm,
+it only stops managing it.** Because these fields are Optional-only, deleting
+one (e.g. `fairshare = "parent"`) makes the plan value null, which converts to
+nil and is omitted from the API upsert entirely (Slurm leaves an omitted field
+untouched); the Read guard then keeps the now-null state field null, so `tofu
+plan` stays clean while Slurm keeps the live value. To actually reset a field,
+set it explicitly (`fairshare = "1"`); to stop managing without touching Slurm,
+use `tofu state rm`. This is documented for end users in the "Removing an
+attribute from config does not reset it" section of
+`templates/resources/account.md.tmpl` / `docs/resources/account.md` and a note
+on the `fairshare` attribute description in both resources.
+
 The `allowed_qos` field in `slurm_user` association blocks (named `qos` before
 v2.0.0 — renamed for consistency with `slurm_account.allowed_qos`, the same
 Slurm association-QOS concept at a different scope) has a stricter rule: it is
@@ -323,6 +335,19 @@ logic (`_account_fields` / `_assoc_fields`) so the two layouts cannot drift.
 The committed `examples/big-cluster/generate.tf` is produced from the same
 template as the generator's output.
 
+The YAML emitter (`_yaml_scalar` / `_yaml_kv`) quotes **conditionally**, not
+always: a value is emitted bare when it is an identifier-like token no YAML
+parser could misread (`_YAML_PLAIN_SAFE` regex + `_YAML_RESERVED` set), and
+quoted otherwise — numeric-looking names (`007`), reserved words
+(`no`/`yes`/`null`), empty strings, or anything with YAML metacharacters. This
+keeps ordinary usernames/account names unquoted for readability while staying
+safe. `fairshare` is special-cased to emit an integer weight bare too
+(`fairshare: 25`, not `"25"`), and `parent` is already bare: unlike the
+string-typed HCL attribute, `generate.tf` coerces the big-cluster YAML value
+with `tostring()`, so quotes are never needed there (only in raw HCL, where
+`"parent"` genuinely must be quoted). Every other numeric-looking value stays
+quoted — only `fairshare` rides through `tostring()`.
+
 ## Current Status
 - All four resources implemented (cluster, account, qos, user with embedded associations).
 - Data sources for every managed entity (`slurm_qos`, `slurm_account`, `slurm_user`),
@@ -342,6 +367,7 @@ template as the generator's output.
 - ~~CI with GitHub Actions~~ — done (unit-tests, lint, docs-check, acceptance matrix, release).
 - Auth improvements (JWT key file instead of short-lived tokens)
 - ~~Handle the `normal` QOS corner case~~ — done. `slurm_qos` `ValidateConfig` now emits a Terraform warning when a managed QOS name matches an entry in `systemQOSNames` (currently just `normal`). The list is package-level so additional system QOS names can be added without changing the validator. Covered by `TestSystemQOSWarning_*` unit tests and the `test/fixtures/system-qos-warning/` plan-only acceptance fixture.
+- ~~Protect the built-in `root` account from deletion~~ — done. Parallel to `systemQOSNames` above, but a hard **error**, not a warning: `slurm_account` refuses to delete an account named `root` (the package-level `protectedAccountNames` list in `internal/resources/account.go`). `ModifyPlan` fails `tofu plan` before any API call whenever a plan would destroy a `root` account — an outright destroy (planned value null) or a rename (`name` has `RequiresReplace`, so it plans destroy-then-create) — and `Delete` re-checks as a backstop. `protectedAccountDeleteError` builds the shared diagnostic (points at deleting the `slurm_cluster` resource to decommission a cluster, and `tofu state rm` to stop managing `root` without deleting it). Unlike the QOS case there is no valid workflow this blocks, hence error not warning. Create/update of `root` is unaffected. Covered by `account_protected_test.go` (root protected, case-sensitive, non-protected names, list non-empty) and the `test/fixtures/protected-root-account/` acceptance fixture. Also documented in the published registry docs (`templates/resources/account.md.tmpl` / `docs/resources/account.md`).
 - **Coordinator role is not supported — notes for implementing it if ever needed.** Slurm's [user permissions model](https://slurm.schedmd.com/user_permissions.html) has a second admin-like role beyond `slurm_user.admin_level` (None/Operator/Administrator): **Coordinator**, a per-**account** list of usernames (`sacctmgr add coordinator account=<account> names=<user>`) granting limited admin rights scoped to that one account and its sub-accounts — structurally similar to `user_associations` (a per-account list of users), not to `admin_level` (a single cluster-wide value on the user). Currently `internal/client/account.go`'s `Account` struct has a dead `Coordinators []string` field (`json:"coordinators,omitempty"`) used only to deserialize whatever `GET /account/{name}` happens to return — nothing in `internal/resources/account.go` reads it into schema, writes it, or diffs it, so there is no `slurm_account.coordinators` attribute today. To implement real support:
   - **First, verify against a live cluster** (same discipline as every other entry in this file) how Slurm's REST API actually manages coordinators before writing any Go: does POSTing to `/accounts/` with a `coordinators` list in the body upsert-replace the full list (matching this API's established "everything is POST upsert" pattern for every other field), or does slurmrestd expose/require a dedicated add/remove mechanism? Don't assume the upsert pattern carries over without checking — this hasn't been tested.
   - Add a `coordinators` (list of string) **Optional** attribute to `slurm_account`'s schema, following the same conventions as `allowed_qos`.
